@@ -1,0 +1,143 @@
+import { useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { sendPasswordResetEmail, updatePassword } from 'firebase/auth';
+import { collection, doc, query, updateDoc, where } from 'firebase/firestore';
+import { auth, db, list } from '../firebase.js';
+import { useMe } from '../auth.jsx';
+import { Btn, Empty, ENV_LABEL, Field, Icon, Loading, Logo, attempt, notify, useLoad } from '../ui.jsx';
+
+/* ---------- notifications ---------- */
+const ago = t => { const m = Math.max(1, Math.round((Date.now() - t) / 60000)); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+export function Notifications() {
+  const me = useMe();
+  const nav = useNavigate();
+  const [rows, reload] = useLoad(() => list(query(collection(db, 'notifications'), where('userId', '==', me.uid))));
+  if (!rows) return <Loading />;
+  const sorted = [...rows].sort((a, b) => b.at - a.at);
+  const open = n => attempt(async () => { if (!n.read) await updateDoc(doc(db, 'notifications', n.id), { read: true }); if (n.link) nav(n.link); else reload(); });
+  const readAll = () => attempt(async () => { await Promise.all(rows.filter(n => !n.read).map(n => updateDoc(doc(db, 'notifications', n.id), { read: true }))); reload(); });
+  return (
+    <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
+      <div className="between">
+        <p className="muted" style={{ margin: 0 }}>{rows.filter(n => !n.read).length} unread</p>
+        <button className="btn btn-ghost btn-sm" onClick={readAll} disabled={!rows.some(n => !n.read)}>Mark all read</button>
+      </div>
+      {sorted.length === 0 ? <Empty title="You're all caught up" body="New tests and enrollments will show up here." /> : (
+        <div className="card" style={{ padding: 6 }}>
+          {sorted.map(n => (
+            <button key={n.id} className="rowlink" style={{ width: '100%', border: 0, background: 'transparent', textAlign: 'left' }} onClick={() => open(n)}>
+              <span className="row">
+                <span style={{ width: 10, height: 10, borderRadius: 99, background: n.read ? 'transparent' : 'var(--accent)', flexShrink: 0 }} />
+                <span style={{ fontWeight: n.read ? 400 : 600 }}>{n.text}</span>
+              </span>
+              <span className="small muted" style={{ whiteSpace: 'nowrap' }}>{ago(n.at)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- settings ---------- */
+export const applyTheme = t => { if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t; };
+export function Settings() {
+  const me = useMe();
+  const [name, setName] = useState(me.name);
+  const [pw, setPw] = useState('');
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tk-theme') || 'system'; } catch { return 'system'; } });
+  const pick = t => { setTheme(t); applyTheme(t); try { localStorage.setItem('tk-theme', t); } catch { /* private mode: theme just won't persist */ } };
+  return (
+    <div className="stack" style={{ gap: 16, maxWidth: 640 }}>
+      <form className="card stack" style={{ gap: 14 }} onSubmit={e => { e.preventDefault(); attempt(async () => { await updateDoc(doc(db, 'users', me.uid), { name: name.trim() }); notify('Name updated'); }); }}>
+        <h3 className="h3" style={{ fontSize: 20 }}>Profile</h3>
+        <Field label="Display name"><input className="input" required value={name} onChange={e => setName(e.target.value)} /></Field>
+        <div className="small muted">Signed in as {me.email}</div>
+        <Btn v="ink" className="" style={{ alignSelf: 'flex-start' }}>Save name</Btn>
+      </form>
+      <section className="card stack" style={{ gap: 12 }}>
+        <h3 className="h3" style={{ fontSize: 20 }}>Appearance</h3>
+        <div className="seg">{[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => <button key={k} aria-pressed={theme === k} onClick={() => pick(k)}>{l}</button>)}</div>
+      </section>
+      <form className="card stack" style={{ gap: 14 }} onSubmit={e => { e.preventDefault(); attempt(async () => { await updatePassword(auth.currentUser, pw); setPw(''); notify('Password changed'); }); }}>
+        <h3 className="h3" style={{ fontSize: 20 }}>Password</h3>
+        <Field label="New password (min 6)"><input className="input" type="password" minLength={6} required autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} /></Field>
+        <Btn v="ink" style={{ alignSelf: 'flex-start' }}>Change password</Btn>
+        <span className="small muted">If it says you need to log in again, log out and back in, then retry.</span>
+      </form>
+    </div>
+  );
+}
+
+/* ---------- search ---------- */
+export function SearchPage() {
+  const me = useMe();
+  const [sp, setSp] = useSearchParams();
+  const q = (sp.get('q') || '').trim().toLowerCase();
+  const [text, setText] = useState(sp.get('q') || '');
+  const [d] = useLoad(async () => ({
+    courses: await list(me.role === 'student' ? query(collection(db, 'courses'), where('students', 'array-contains', me.uid)) : me.role === 'trainer' ? query(collection(db, 'courses'), where('trainerId', '==', me.uid)) : collection(db, 'courses')),
+    qs: await list(collection(db, 'questions')),
+    people: me.role === 'student' ? await list(collection(db, 'leaderboard')) : [],
+  }));
+  const has = s => s.toLowerCase().includes(q);
+  const hit = d && q.length >= 2 && {
+    courses: d.courses.filter(c => has(`${c.title} ${c.description}`)),
+    qs: d.qs.filter(x => has(`${x.title} ${x.topic || ''} ${x.statement}`)),
+    people: d.people.filter(p => has(p.name)),
+  };
+  const Section = ({ title, children }) => <section className="stack" style={{ gap: 8 }}><h2 className="h3" style={{ fontSize: 20 }}>{title}</h2><div className="card" style={{ padding: 6 }}>{children}</div></section>;
+  return (
+    <div className="stack" style={{ gap: 18 }}>
+      <form role="search" className="row" onSubmit={e => { e.preventDefault(); setSp({ q: text }); }}>
+        <label className="sr" htmlFor="sq">Search</label>
+        <input id="sq" className="input" type="search" autoFocus placeholder="Search courses, questions, people…" value={text} onChange={e => setText(e.target.value)} style={{ minHeight: 54, fontSize: 17 }} />
+        <button className="btn btn-ink btn-lg" type="submit">Search</button>
+      </form>
+      {!d ? <Loading /> : !hit ? <Empty title="Search everything" body="Find courses and practice questions. Try a topic like “strings”." /> : (
+        hit.courses.length + hit.qs.length + hit.people.length === 0 ? <Empty title={`No results for “${sp.get('q')}”`} body="Check the spelling, or try a broader word." /> : (
+          <>
+            {hit.qs.length > 0 && <Section title="Questions">{hit.qs.map(x => (
+              <Link key={x.id} to={me.role === 'student' ? `/solve/practice/${x.id}` : '/questions'} className="rowlink">
+                <b>{x.title}</b><span className="row small"><span className="muted">{x.topic}</span><span className="chip">{ENV_LABEL[x.env]}</span></span>
+              </Link>))}</Section>}
+            {hit.courses.length > 0 && <Section title="Courses">{hit.courses.map(c => (
+              <Link key={c.id} to={`/course/${c.id}`} className="rowlink"><b>{c.title}</b><span className="small muted">{c.trainerName}</span></Link>))}</Section>}
+            {hit.people.length > 0 && <Section title="People">{hit.people.map(p => (
+              <Link key={p.id} to="/leaderboard" className="rowlink"><b>{p.name}</b><span className="small muted mono">{p.xp} XP</span></Link>))}</Section>}
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
+/* ---------- forgot password (public) ---------- */
+export function Forgot() {
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  return (
+    <div className="auth">
+      <aside className="auth-art"><Link to="/" style={{ textDecoration: 'none' }}><Logo /></Link><span /><span className="small" style={{ color: '#9CA0AB' }}>Courses, tests and results, in one place.</span></aside>
+      <main className="auth-form">
+        <form className="auth-box" onSubmit={e => { e.preventDefault(); attempt(async () => { await sendPasswordResetEmail(auth, email).catch(() => {}); setSent(true); }); }}>
+          <div className="mobile-logo"><Logo size={26} /></div>
+          <h1 className="h2" style={{ fontSize: 38 }}>Reset your password</h1>
+          {sent ? (
+            <>
+              <p className="muted" style={{ margin: 0 }}>If an account exists for {email}, we've emailed a link to set a new password.</p>
+              <Link to="/login" className="btn btn-ink btn-lg">Back to log in</Link>
+            </>
+          ) : (
+            <>
+              <p className="muted" style={{ margin: 0 }}>Enter the email your admin used for your account.</p>
+              <Field label="Email"><input className="input" type="email" required value={email} onChange={e => setEmail(e.target.value)} /></Field>
+              <Btn v="ink" className="btn-lg">Send reset link</Btn>
+              <Link to="/login" className="small" style={{ textAlign: 'center' }}>Back to log in</Link>
+            </>
+          )}
+        </form>
+      </main>
+    </div>
+  );
+}
