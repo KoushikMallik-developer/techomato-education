@@ -34,6 +34,7 @@ export default function Login() {
       <main className="auth-form">
         <form className="auth-box" onSubmit={e => { e.preventDefault(); if (!email || !pw) { setErr('Enter your email and password.'); e.target.elements[email ? 'password' : 'email'].focus(); return; } signIn(email, pw); }} noValidate>
           <div className="mobile-logo"><Logo size={26} /></div>
+          {import.meta.env.VITE_NO_KEY && <p role="status" className="small" style={{ margin: 0, padding: '8px 12px', borderRadius: 8, background: 'var(--ink)', color: 'var(--paper)' }}>Demo data: Firebase is not configured. Nothing is saved.</p>}
           <h1 className="h2" style={{ fontSize: 38 }}>Welcome back</h1>
           <p className="muted" style={{ margin: 0 }}>Log in with the account your admin created for you.</p>
           <label className="field"><span>Email</span><input className="input" name="email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>

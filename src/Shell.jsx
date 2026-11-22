@@ -73,6 +73,7 @@ export default function Shell({ title, children }) {
       </aside>
 
       <div className="main">
+        {import.meta.env.VITE_NO_KEY && <div role="status" className="small" style={{ padding: '6px 16px', background: 'var(--ink)', color: 'var(--paper)', textAlign: 'center' }}>Demo data: Firebase is not configured. Nothing is saved.</div>}
         <div className="topbar">
           <div className="row" style={{ minWidth: 0 }}>
             <span className="mobile-only"><Logo size={28} text={false} /></span>
