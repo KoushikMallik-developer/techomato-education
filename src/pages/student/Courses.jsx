@@ -1,9 +1,11 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db, listIn } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { CourseGrid, ENV_LABEL, Empty, Icon, Loading, useLoad } from '../../ui.jsx';
 import { get, mySubs, myCourses } from './data.js';
+import * as proctor from '../../proctor.js';
+import { useProctor } from '../../ProctorGuard.jsx';
 
 const Back = ({ to, children }) => <Link to={to} className="row small" style={{ gap: 4, fontWeight: 600, textDecoration: 'none' }}><Icon name="back" size={16} />{children}</Link>;
 
@@ -58,6 +60,8 @@ export function CourseView() {
 export function TestView() {
   const { courseId, testId } = useParams();
   const me = useMe();
+  const nav = useNavigate();
+  const exam = useProctor().testId === testId;
   const [d] = useLoad(async () => {
     const test = await get('tests', testId);
     if (!test) return { gone: true };
@@ -68,7 +72,7 @@ export function TestView() {
   if (d.gone) return <Empty title="This test was removed" action={<Link to={`/course/${courseId}`} className="btn btn-ink">Back to course</Link>} />;
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <Back to={`/course/${courseId}`}>Course</Back>
+      {!exam && <Back to={`/course/${courseId}`}>Course</Back>}
       <h2 className="h2" style={{ fontSize: 36 }}>{d.test.title}</h2>
       <div className="card" style={{ padding: 6 }}>
         {d.qs.map((q, i) => {
@@ -87,6 +91,15 @@ export function TestView() {
           );
         })}
       </div>
+      {exam && (() => {
+        const allDone = d.qs.every(q => d.subs.some(s => s.questionId === q.id));
+        return (
+          <div className="row" style={{ gap: 12 }}>
+            <button className="btn btn-accent" disabled={!allDone} onClick={() => { proctor.stop(true); nav(`/course/${courseId}`); }}>Finish exam</button>
+            {!allDone && <span className="small muted">Submit every question to finish.</span>}
+          </div>
+        );
+      })()}
     </div>
   );
 }

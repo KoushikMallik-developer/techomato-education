@@ -6,7 +6,7 @@ import Landing from './pages/public/Landing.jsx';
 import Login from './pages/public/Login.jsx';
 import { Help, Institutes, Legal, Pricing } from './pages/public/Public.jsx';
 import { AdminCourses, AdminOverview, AdminPayments, AdminUsers } from './pages/staff/Admin.jsx';
-import { TrainerCourses, Questions, TestsPage } from './pages/staff/Trainer.jsx';
+import { TrainerCourses, TrainerResults, Questions, TestsPage } from './pages/staff/Trainer.jsx';
 import CourseDetail from './pages/staff/CourseDetail.jsx';
 import { Dashboard } from './pages/student/Dashboard.jsx';
 import { Courses, CourseView, TestView } from './pages/student/Courses.jsx';
@@ -52,6 +52,7 @@ export default function App() {
   else if (me.role === 'trainer') body = (
     <Routes>
       <Route path="/" element={page('My courses', <TrainerCourses />)} />
+      <Route path="/results" element={page('Results', <TrainerResults />)} />
       <Route path="/questions" element={page('Question bank', <Questions />)} />
       <Route path="/tests" element={page('Tests', <TestsPage />)} />
       <Route path="/course/:id" element={page('Course', <CourseDetail />)} />

@@ -8,7 +8,7 @@ React + Vite + Tailwind + Firebase (Auth, Firestore).
 - **Student**: solves questions in an editor, "Run sample tests" and "Submit" show test cases passed. Free students get one submission per question; subscribers can resubmit.
 
 - **Student extras**: XP (10 per passed test case), daily streak, leaderboard, playground (run code with your own input), profile.
-- **Proctored tests**: tick "Proctored" when a trainer creates a test. Students must allow the camera and go fullscreen. Tab switches, leaving fullscreen, copy/paste and right-click are logged (`proctor` collection), and a small camera photo is saved about once a minute (`snaps` collection, stored in Firestore because Firebase Storage needs a paid plan). Trainers see a "flags" chip per student and open it for the log and photos. Redeploy `firestore.rules` after pulling this.
+- **Proctored tests**: tick "Proctored" when a trainer creates a test. Before it starts the student must have a working camera (the picture is checked, a black or covered image is refused), a microphone, one screen and fullscreen. The exam then shows no menu, and the student can leave only after submitting every question ("Finish exam"). Leaving fullscreen, a second screen, a covered camera or a muted microphone pauses the exam behind an overlay. Tab switches, copy/paste, right-click, no face and two faces are logged (`proctor` collection), and a small photo is saved about once a minute (`snaps`, in Firestore because Storage needs a paid plan). Trainers see a flags chip per student on the course page, a Results page with a per-test summary, and the full log and photos. Redeploy `firestore.rules` after pulling this: the exam refuses to start if it cannot save its records.
 - **Public pages**: landing, pricing, for institutes, help, privacy, terms.
 
 ## Setup
@@ -50,7 +50,7 @@ New page: add the file under the role's folder, then add its route in App.jsx an
 ## Known limits
 
 - Grading runs in the browser (Pyodide for Python, sandboxed iframe for web), so a determined student can tamper with their score. Hidden test cases are readable by students via the Firestore API for the same reason.
-- Proctoring is a deterrent plus evidence, not a lock: a second device or a helper off camera is not caught, and a student with devtools can skip the logging. Photos count against the free Firestore quota (about 10 KB each, one per minute per student). Anything high-stakes needs Safe Exam Browser or server-side grading.
+- Proctoring is strong deterrence plus evidence, not a lock: a browser cannot stop a second device, a helper off camera, a virtual camera or devtools. The face check loads from a CDN (needs internet) and only logs. Second-screen detection works in Chrome and Edge only. Photos count against the free Firestore quota (about 10 KB each, one per minute per student). Anything high-stakes needs Safe Exam Browser or server-side grading.
 - Java (and full C++/STL) is not supported: browsers can only run languages compiled to WebAssembly or interpreted in JS. C/C++ uses the JSCPP interpreter (core language only). Java needs a server runner such as Judge0.
 - Students can take up to 5 minutes to see a newly added question (it is cached in the browser). The leaderboard shows the top 50 only. XP is written by the student's browser, so it can be faked.
 - Admin-created passwords are shown in plain text in the form and must be shared with the user manually.

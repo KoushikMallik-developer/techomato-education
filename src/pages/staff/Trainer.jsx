@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, query, serverTimestamp, where } from 'firebase/firestore';
-import { db, forgetQuestions, list } from '../../firebase.js';
+import { Link } from 'react-router-dom';
+import { db, forgetQuestions, list, listIn } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { Btn, CourseGrid, ENV_LABEL, Empty, STARTERS, Field, Icon, Loading, attempt, notify, useBusy, useLoad } from '../../ui.jsx';
 
@@ -13,6 +14,49 @@ export function TrainerCourses() {
   const [courses] = useLoad(() => list(query(collection(db, 'courses'), where('trainerId', '==', me.uid))));
   if (!courses) return <Loading />;
   return <CourseGrid courses={courses} empty="No courses assigned to you yet" />;
+}
+
+// All of this trainer's courses at a glance: who attempted each test, the average, and how many students were flagged. Details are on the course page.
+export function TrainerResults() {
+  const me = useMe();
+  const [d] = useLoad(async () => {
+    const courses = await list(query(collection(db, 'courses'), where('trainerId', '==', me.uid)));
+    const ids = [...new Set(courses.flatMap(c => c.testIds))];
+    const by = col => listIn(ids, x => query(collection(db, col), where('testId', 'in', x)));
+    const [tests, subs, events] = await Promise.all([list(collection(db, 'tests')), by('submissions'), by('proctor')]);
+    return { courses, tests, subs, events };
+  });
+  if (!d) return <Loading />;
+  if (!d.courses.length) return <Empty title="No courses assigned to you yet" />;
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      {d.courses.map(c => (
+        <section key={c.id} className="card stack" style={{ gap: 12 }}>
+          <div className="between"><h2 className="h3" style={{ fontSize: 22 }}>{c.title}</h2><Link to={`/course/${c.id}`} className="btn btn-ghost btn-sm">Student-by-student results</Link></div>
+          {c.testIds.length === 0 ? <span className="small muted">No tests assigned yet.</span> : (
+            <div className="scroll-x"><table>
+              <thead><tr><th>Test</th><th>Students attempted</th><th>Average of submitted answers</th><th>Flagged</th></tr></thead>
+              <tbody>{c.testIds.map(tid => {
+                const t = d.tests.find(x => x.id === tid);
+                if (!t) return null;
+                const subs = d.subs.filter(s => s.testId === tid), who = new Set(subs.map(s => s.userId));
+                const total = subs.reduce((n, s) => n + s.total, 0), passed = subs.reduce((n, s) => n + s.passed, 0);
+                const flagged = new Set(d.events.filter(e => e.testId === tid && e.kind !== 'start').map(e => e.userId)).size;
+                return (
+                  <tr key={tid}>
+                    <td><b>{t.title}</b>{t.proctored && <span className="chip chip-warn" style={{ marginLeft: 8 }}>Proctored</span>}</td>
+                    <td>{who.size} of {c.students.length}</td>
+                    <td>{total ? `${Math.round((100 * passed) / total)}%` : <span className="muted">No submissions</span>}</td>
+                    <td>{t.proctored ? flagged : <span className="muted">n/a</span>}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
 }
 
 function QuestionForm({ onSaved }) {

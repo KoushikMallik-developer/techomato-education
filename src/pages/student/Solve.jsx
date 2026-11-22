@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc, runTransaction, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
@@ -21,6 +21,7 @@ export function Solve() {
   const { testId, qid } = useParams();
   const me = useMe();
   const nav = useNavigate();
+  const { pathname } = useLocation();
   const subId = `${me.uid}_${testId}_${qid}`;
   const [d] = useLoad(async () => {
     const [q, sub, prior, test] = await Promise.all([get('questions', qid), getDoc(doc(db, 'submissions', subId)), mySubs(me.uid, [where('questionId', '==', qid)]), testId === 'practice' ? null : get('tests', testId)]);
@@ -43,11 +44,13 @@ export function Solve() {
       <div className="card stack" style={{ gap: 14, maxWidth: 560 }}>
         <h2 className="h3" style={{ fontSize: 24 }}>This test is proctored</h2>
         <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
-          <li>It runs in fullscreen. Leaving fullscreen or switching tabs is recorded.</li>
+          <li>You need a working camera and microphone, and only one screen connected.</li>
+          <li>It runs in fullscreen with no menu. You can leave only after you submit every question.</li>
+          <li>Leaving fullscreen, a second screen, a covered camera or a muted microphone pauses the exam and is recorded.</li>
           <li>Your camera takes a small photo about once a minute. Your trainer can see these photos.</li>
-          <li>Copy, cut, paste and right-click are blocked and recorded.</li>
+          <li>Tab switches, copy, paste and right-click are recorded.</li>
         </ul>
-        <div className="row"><button className="btn btn-accent" onClick={() => attempt(async () => { await proctor.start(me.uid, testId); setProctored(true); })}>Allow camera and start</button><button className="btn btn-ghost" onClick={() => nav(-1)}>Back</button></div>
+        <div className="row"><button className="btn btn-accent" onClick={() => attempt(async () => { await proctor.start(me.uid, testId, pathname); setProctored(true); })}>Allow camera and start</button><button className="btn btn-ghost" onClick={() => nav(-1)}>Back</button></div>
       </div>
     );
   }

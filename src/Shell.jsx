@@ -1,16 +1,16 @@
 import { Fragment, useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db, list } from './firebase.js';
 import { useMe } from './auth.jsx';
-import { stop as stopProctor } from './proctor.js';
+import { ProctorOverlay, useProctor } from './ProctorGuard.jsx';
 import { Avatar, DemoNote, Icon, Logo } from './ui.jsx';
 
 // group -> [label, path, icon, extra path prefixes that also highlight the item]
 export const NAV = {
   admin: [['Manage', [['Overview', '/', 'chart'], ['Courses', '/courses', 'book', ['/course/']], ['Users', '/users', 'users'], ['Payments', '/payments', 'doc']]], ['Account', [['Settings', '/settings', 'gear']]]],
-  trainer: [['Teach', [['My courses', '/', 'book', ['/course/']], ['Question bank', '/questions', 'code'], ['Tests', '/tests', 'clip']]], ['Account', [['Settings', '/settings', 'gear']]]],
+  trainer: [['Teach', [['My courses', '/', 'book', ['/course/']], ['Results', '/results', 'trophy'], ['Question bank', '/questions', 'code'], ['Tests', '/tests', 'clip']]], ['Account', [['Settings', '/settings', 'gear']]]],
   student: [
     ['Learning', [['Dashboard', '/', 'home'], ['Courses', '/courses', 'book', ['/course/', '/test/', '/solve/']]]],
     ['Practice', [['Problems', '/problems', 'list', ['/solve/practice/']], ['Daily contest', '/contest', 'flame'], ['Playground', '/playground', 'play'], ['Cheat sheets', '/cheatsheets', 'doc']]],
@@ -18,7 +18,7 @@ export const NAV = {
     ['Account', [['Profile', '/profile', 'user'], ['Notifications', '/notifications', 'bell'], ['Settings', '/settings', 'gear']]],
   ],
 };
-const TABS = { admin: 4, trainer: 3 }; // phone tab bar shows the first N items; Settings (with Log out) is the last tab for staff
+const TABS = { admin: 4, trainer: 4 }; // phone tab bar shows the first N items; Settings (with Log out) is the last tab for staff
 const STUDENT_TABS = [['Home', '/', 'home', ['/test/']], ['Learn', '/courses', 'book', ['/course/']], ['Contest', '/contest', 'flame'], ['Search', '/search', 'search'], ['More', '/more', 'more']];
 
 export default function Shell({ title, children }) {
@@ -35,7 +35,7 @@ export default function Shell({ title, children }) {
   const nav = useNavigate();
   const [unread, setUnread] = useState(0);
   const [q, setQ] = useState('');
-  useEffect(() => { if (!/^\/(solve|test)\//.test(pathname)) stopProctor(); }, [pathname]); // proctoring ends when the student leaves the test
+  const px = useProctor();
   useEffect(() => {
     if (!student) return;
     const load = () => list(query(collection(db, 'notifications'), where('userId', '==', me.uid), where('read', '==', false))).then(r => setUnread(r.length), () => {});
@@ -43,6 +43,18 @@ export default function Shell({ title, children }) {
     addEventListener('tk-notifs', load); // fired by the Notifications page after marking read
     return () => removeEventListener('tk-notifs', load);
   }, [pathname, me.uid, student]); // shortcut: refetched on navigation, not live
+
+  // During a proctored exam the student sees only that test: no menu, and every other route bounces back.
+  if (px.testId) {
+    const ok = pathname.startsWith(`/solve/${px.testId}/`) || (pathname.startsWith('/test/') && pathname.endsWith(`/${px.testId}`));
+    if (!ok) return <Navigate to={px.home} replace />;
+    return (
+      <div className="app"><div className="main" style={{ maxWidth: 1280, margin: '0 auto' }}>
+        <div className="warnbar" style={{ marginBottom: 16 }}><Icon name="lock" size={18} />Proctored exam in progress. You can leave only after you submit every question.</div>
+        {children}
+      </div><ProctorOverlay /></div>
+    );
+  }
 
   return (
     <div className="app">

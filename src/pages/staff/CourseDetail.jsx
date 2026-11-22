@@ -119,7 +119,7 @@ export default function CourseDetail() {
                       return (
                         <td key={i}>
                           {c ? <button className={`chip ${pct >= 60 ? 'chip-pass' : 'chip-warn'}`} style={{ border: 0 }} title="View submissions" onClick={() => setView({ student, test: assigned[i] })}>{c.passed}/{c.total} · {pct}%</button> : <span className="small muted">Not attempted</span>}
-                          {assigned[i].proctored && flagsOf(student.id, assigned[i].id).length > 0 && <button className="chip chip-warn" style={{ border: 0, marginLeft: 6 }} title="View proctoring evidence" onClick={() => setView({ student, test: assigned[i] })}>{flagsOf(student.id, assigned[i].id).length} flags</button>}
+                          {assigned[i].proctored && (() => { const ev = flagsOf(student.id, assigned[i].id), n = ev.filter(e => e.kind !== 'start').length; return ev.length > 0 && <button className={`chip ${n ? 'chip-warn' : 'chip-pass'}`} style={{ border: 0, marginLeft: 6 }} title="View proctoring evidence" onClick={() => setView({ student, test: assigned[i] })}>{n ? `${n} flags` : 'No flags'}</button>; })()}
                         </td>
                       );
                     })}
