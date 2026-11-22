@@ -58,6 +58,7 @@ export default function Shell({ title, children }) {
 
   return (
     <div className="app">
+      <ProctorOverlay />
       <aside className="side" style={dark} data-dark={admin || undefined} aria-label="Sidebar">
         <div className="between" style={{ padding: '0 8px' }}>
           <Link to="/" style={{ textDecoration: 'none' }}><Logo /></Link>

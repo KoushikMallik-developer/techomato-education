@@ -52,7 +52,7 @@ service cloud.firestore {
 
     // Proctoring evidence for tests marked proctored: students write their own, staff read. Webcam photos are small JPEG data URLs (free plan has no Storage).
     match /proctor/{id} {
-      allow read: if staff();
+      allow read: if staff() || (request.auth != null && resource.data.userId == request.auth.uid); // students read their own, to know an exam was auto-submitted
       allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid;
     }
     match /snaps/{id} {

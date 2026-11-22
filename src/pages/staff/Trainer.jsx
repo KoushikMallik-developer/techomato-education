@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, query, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, arrayUnion, collection, deleteDoc, doc, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
+import { isFlag } from '../../proctor.js';
 import { db, forgetQuestions, list, listIn } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { Btn, CourseGrid, ENV_LABEL, Empty, STARTERS, Field, Icon, Loading, attempt, notify, useBusy, useLoad } from '../../ui.jsx';
@@ -41,7 +42,7 @@ export function TrainerResults() {
                 if (!t) return null;
                 const subs = d.subs.filter(s => s.testId === tid), who = new Set(subs.map(s => s.userId));
                 const total = subs.reduce((n, s) => n + s.total, 0), passed = subs.reduce((n, s) => n + s.passed, 0);
-                const flagged = new Set(d.events.filter(e => e.testId === tid && e.kind !== 'start').map(e => e.userId)).size;
+                const flagged = new Set(d.events.filter(e => e.testId === tid && isFlag(e)).map(e => e.userId)).size;
                 return (
                   <tr key={tid}>
                     <td><b>{t.title}</b>{t.proctored && <span className="chip chip-warn" style={{ marginLeft: 8 }}>Proctored</span>}</td>
@@ -155,27 +156,34 @@ export function Questions() {
 
 export function TestsPage() {
   const me = useMe();
-  const [data, reload] = useLoad(async () => ({ qs: await list(collection(db, 'questions')), tests: await list(collection(db, 'tests')) }));
+  const [data, reload] = useLoad(async () => ({ qs: await list(collection(db, 'questions')), tests: await list(collection(db, 'tests')), courses: await list(query(collection(db, 'courses'), where('trainerId', '==', me.uid))) }));
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [picked, setPicked] = useState([]);
   const [proctored, setProctored] = useState(false);
+  const [courseIds, setCourseIds] = useState([]);
   const [busy, run] = useBusy();
   if (!data) return <Loading />;
   const save = e => {
     e.preventDefault();
     run(async () => {
       if (!picked.length) throw new Error('Choose at least one question');
-      await addDoc(collection(db, 'tests'), { title, questionIds: picked, proctored, authorId: me.uid, createdAt: serverTimestamp() });
-      setTitle(''); setPicked([]); setProctored(false); setOpen(false);
-      notify('Test created. Assign it from a course page.');
+      const ref = await addDoc(collection(db, 'tests'), { title, questionIds: picked, proctored, authorId: me.uid, createdAt: serverTimestamp() });
+      for (const c of data.courses.filter(c => courseIds.includes(c.id))) { // one batch per course: the assignment and its notifications land together
+        const b = writeBatch(db); // shortcut: notifies the first 450 students (batch limit 500), assign from the course page for larger classes
+        b.update(doc(db, 'courses', c.id), { testIds: arrayUnion(ref.id) });
+        c.students.slice(0, 450).forEach(userId => b.set(doc(collection(db, 'notifications')), { userId, text: `New test in ${c.title}: ${title}`, link: `/course/${c.id}`, read: false, at: Date.now() }));
+        await b.commit();
+      }
+      setTitle(''); setPicked([]); setProctored(false); setCourseIds([]); setOpen(false);
+      notify(courseIds.length ? `Test created and assigned to ${courseIds.length} course${courseIds.length > 1 ? 's' : ''}` : 'Test created. Assign it from a course page.');
       reload();
     });
   };
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="between">
-        <p className="muted" style={{ margin: 0 }}>A test is a set of questions from the bank. Assign it to a course from the course page.</p>
+        <p className="muted" style={{ margin: 0 }}>A test is a set of questions from the bank. Pick the courses when you create it, or assign it later from a course page.</p>
         <button className="btn btn-ink" onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'New test'}</button>
       </div>
       {open && (
@@ -192,6 +200,15 @@ export function TestsPage() {
                 </label>
               );
             }) : <span className="muted small">Add questions to the bank first.</span>}
+          </div>
+          <div className="stack" style={{ gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Assign to your courses (optional)</span>
+            {data.courses.length ? data.courses.map(c => (
+              <label key={c.id} className={`opt ${courseIds.includes(c.id) ? 'sel' : ''}`}>
+                <input type="checkbox" checked={courseIds.includes(c.id)} onChange={e => setCourseIds(e.target.checked ? [...courseIds, c.id] : courseIds.filter(x => x !== c.id))} />
+                <span style={{ flexGrow: 1 }}>{c.title}</span><span className="small muted">{c.students.length} students</span>
+              </label>
+            )) : <span className="muted small">No courses are assigned to you yet.</span>}
           </div>
           <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={proctored} onChange={e => setProctored(e.target.checked)} /><span><b>Proctored</b> <span className="small muted">(fullscreen, camera photos each minute, tab switches and paste attempts are recorded)</span></span></label>
           <div><Btn v="accent" disabled={busy}>Create test</Btn></div>

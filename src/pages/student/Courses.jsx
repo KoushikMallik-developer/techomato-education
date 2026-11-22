@@ -5,7 +5,7 @@ import { useMe } from '../../auth.jsx';
 import { CourseGrid, ENV_LABEL, Empty, Icon, Loading, useLoad } from '../../ui.jsx';
 import { get, mySubs, myCourses } from './data.js';
 import * as proctor from '../../proctor.js';
-import { useProctor } from '../../ProctorGuard.jsx';
+import { ProctorStart, useProctor } from '../../ProctorGuard.jsx';
 
 const Back = ({ to, children }) => <Link to={to} className="row small" style={{ gap: 4, fontWeight: 600, textDecoration: 'none' }}><Icon name="back" size={16} />{children}</Link>;
 
@@ -70,15 +70,21 @@ export function TestView() {
   }, [testId]);
   if (!d) return <Loading />;
   if (d.gone) return <Empty title="This test was removed" action={<Link to={`/course/${courseId}`} className="btn btn-ink">Back to course</Link>} />;
+  const needStart = d.test.proctored && !exam;
+  const done = d.qs.filter(q => d.subs.some(s => s.questionId === q.id)).length;
   return (
     <div className="stack" style={{ gap: 20 }}>
       {!exam && <Back to={`/course/${courseId}`}>Course</Back>}
-      <h2 className="h2" style={{ fontSize: 36 }}>{d.test.title}</h2>
-      <div className="card" style={{ padding: 6 }}>
+      <div className="stack" style={{ gap: 6 }}>
+        <h2 className="h2" style={{ fontSize: 36 }}>{d.test.title}</h2>
+        <span className="muted">{done} of {d.qs.length} questions submitted{!me.subscribed && '. Free plan: one submission per question, so check your answer before you submit.'}</span>
+      </div>
+      {needStart && <ProctorStart testId={testId} questionIds={d.test.questionIds} />}
+      <div className="card" style={{ padding: 6, opacity: needStart ? 0.55 : 1 }}>
         {d.qs.map((q, i) => {
           const s = d.subs.find(x => x.questionId === q.id);
           return (
-            <Link key={q.id} to={`/solve/${testId}/${q.id}`} className="rowlink">
+            <Link key={q.id} to={needStart ? '#' : `/solve/${testId}/${q.id}`} onClick={e => needStart && e.preventDefault()} aria-disabled={needStart} className="rowlink">
               <span className="row">
                 {s && s.passed === s.total ? <Icon name="check" size={18} stroke={2.4} color="var(--pass-strong)" /> : <span style={{ width: 18 }} />}
                 <span style={{ fontWeight: 600 }}>{i + 1}. {q.title}</span>

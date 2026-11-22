@@ -4,7 +4,7 @@ import { arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, query, whe
 import { db, list, listIn, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { scoreTable } from '../../score.js';
-import { KIND_LABEL } from '../../proctor.js';
+import { KIND_LABEL, isFlag } from '../../proctor.js';
 import { Avatar, Btn, CodeBlock, Empty, Icon, Loading, Modal, attempt, notify, useBusy, useLoad } from '../../ui.jsx';
 
 // Staff view of a course. Admin: enroll students (and record the payment). Trainer: assign tests and read results.
@@ -119,7 +119,7 @@ export default function CourseDetail() {
                       return (
                         <td key={i}>
                           {c ? <button className={`chip ${pct >= 60 ? 'chip-pass' : 'chip-warn'}`} style={{ border: 0 }} title="View submissions" onClick={() => setView({ student, test: assigned[i] })}>{c.passed}/{c.total} · {pct}%</button> : <span className="small muted">Not attempted</span>}
-                          {assigned[i].proctored && (() => { const ev = flagsOf(student.id, assigned[i].id), n = ev.filter(e => e.kind !== 'start').length; return ev.length > 0 && <button className={`chip ${n ? 'chip-warn' : 'chip-pass'}`} style={{ border: 0, marginLeft: 6 }} title="View proctoring evidence" onClick={() => setView({ student, test: assigned[i] })}>{n ? `${n} flags` : 'No flags'}</button>; })()}
+                          {assigned[i].proctored && (() => { const ev = flagsOf(student.id, assigned[i].id), n = ev.filter(isFlag).length; return ev.length > 0 && <button className={`chip ${n ? 'chip-warn' : 'chip-pass'}`} style={{ border: 0, marginLeft: 6 }} title="View proctoring evidence" onClick={() => setView({ student, test: assigned[i] })}>{n ? `${n} flags` : 'No flags'}</button>; })()}
                         </td>
                       );
                     })}
@@ -143,7 +143,7 @@ export default function CourseDetail() {
               const s = subs.find(x => x.userId === view.student.id && x.testId === view.test.id && x.questionId === qid);
               return (
                 <div key={qid} className="stack" style={{ gap: 6 }}>
-                  <div className="between"><b>{q ? q.title : 'Removed question'}</b>{s ? <span className={`chip ${s.passed === s.total ? 'chip-pass' : 'chip-warn'}`}>{s.passed}/{s.total}</span> : <span className="small muted">Not attempted</span>}</div>
+                  <div className="between"><b>{q ? q.title : 'Removed question'}</b>{s ? <span className="row" style={{ gap: 6 }}>{s.auto && <span className="chip chip-warn">Auto-submitted, not answered</span>}<span className={`chip ${s.passed === s.total ? 'chip-pass' : 'chip-warn'}`}>{s.passed}/{s.total}</span></span> : <span className="small muted">Not attempted</span>}</div>
                   {s && <CodeBlock code={s.code} />}
                 </div>
               );
@@ -165,11 +165,11 @@ function Proctoring({ uid, test, events }) {
     <section className="stack" style={{ gap: 8, background: 'var(--paper)', borderRadius: 14, padding: 14 }}>
       <b>Proctoring</b>
       {sorted.length === 0 ? <span className="small muted">No flags recorded.</span> : (
-        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{sorted.map(e => <li key={e.id}>{new Date(e.at).toLocaleTimeString()}: {KIND_LABEL[e.kind] || e.kind}</li>)}</ul>
+        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{sorted.map(e => <li key={e.id}>{new Date(e.at).toLocaleTimeString()}: {KIND_LABEL[e.kind] || e.kind}{e.detail && ` (${e.detail})`}</li>)}</ul>
       )}
       {!photos ? <span className="small muted">Loading photos…</span> : photos.length === 0 ? <span className="small muted">No camera photos.</span> : (
         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-          {photos.map(p => <img key={p.id} src={p.img} width={120} height={90} alt={`Camera photo at ${new Date(p.at).toLocaleTimeString()}`} title={new Date(p.at).toLocaleTimeString()} style={{ borderRadius: 8, objectFit: 'cover' }} />)}
+          {photos.map(p => <img key={p.id} src={p.img} width={120} height={90} alt={`Camera photo at ${new Date(p.at).toLocaleTimeString()}`} title={`${new Date(p.at).toLocaleTimeString()}${p.reason ? `: ${KIND_LABEL[p.reason] || p.reason}` : ''}`} style={{ borderRadius: 8, objectFit: 'cover' }} />)}
         </div>
       )}
     </section>

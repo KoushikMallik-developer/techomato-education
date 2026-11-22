@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc, runTransaction, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { grade } from '../../runner.js';
 import * as proctor from '../../proctor.js';
+import { ProctorStart } from '../../ProctorGuard.jsx';
 import { dayKey, nextStreak } from '../../score.js';
 import { CodeBlock, ENV_FILE, ENV_LABEL, Empty, Icon, Loading, Modal, Tabs, attempt, notify, useLoad } from '../../ui.jsx';
 import Editor from '../../Editor.jsx';
@@ -21,7 +22,6 @@ export function Solve() {
   const { testId, qid } = useParams();
   const me = useMe();
   const nav = useNavigate();
-  const { pathname } = useLocation();
   const subId = `${me.uid}_${testId}_${qid}`;
   const [d] = useLoad(async () => {
     const [q, sub, prior, test] = await Promise.all([get('questions', qid), getDoc(doc(db, 'submissions', subId)), mySubs(me.uid, [where('questionId', '==', qid)]), testId === 'practice' ? null : get('tests', testId)]);
@@ -35,30 +35,18 @@ export function Solve() {
   const [preview, setPreview] = useState('');
   const [saved, setSaved] = useState(null);
   const [proctored, setProctored] = useState(() => proctor.active(testId));
+  const submitRef = useRef(null); // set below once the question has loaded
+  useEffect(() => { proctor.setSubmitter(() => submitRef.current?.()); return () => proctor.setSubmitter(null); }, []);
   useEffect(() => { setCode(null); setRes(null); setSaved(null); setTab('problem'); setProctored(proctor.active(testId)); }, [testId, qid]);
   if (!d) return <Loading />;
   if (!d.q) return <Empty title="This question was removed" body="Your trainer deleted it. Go back to the test." />;
 
-  if (d.test?.proctored && !proctored) {
-    return (
-      <div className="card stack" style={{ gap: 14, maxWidth: 560 }}>
-        <h2 className="h3" style={{ fontSize: 24 }}>This test is proctored</h2>
-        <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
-          <li>You need a working camera and microphone, and only one screen connected.</li>
-          <li>It runs in fullscreen with no menu. You can leave only after you submit every question.</li>
-          <li>Leaving fullscreen, a second screen, a covered camera or a muted microphone pauses the exam and is recorded.</li>
-          <li>Your camera takes a small photo about once a minute. Your trainer can see these photos.</li>
-          <li>Tab switches, copy, paste and right-click are recorded.</li>
-        </ul>
-        <div className="row"><button className="btn btn-accent" onClick={() => attempt(async () => { await proctor.start(me.uid, testId, pathname); setProctored(true); })}>Allow camera and start</button><button className="btn btn-ghost" onClick={() => nav(-1)}>Back</button></div>
-      </div>
-    );
-  }
+  if (d.test?.proctored && !proctored) return <ProctorStart testId={testId} questionIds={d.test.questionIds} onStarted={() => setProctored(true)} onBack={() => nav(-1)} />;
 
   const { q } = d;
   const sub = saved || d.sub;
   const text = code ?? sub?.code ?? q.starter;
-  const locked = (!!sub || d.prior.length > 0) && !me.subscribed; // one attempt per question overall, not per test
+  const locked = !!sub && !me.subscribed; // free plan: one submission per question in each test (or in practice); the same question in another test is a fresh attempt
   const best = Math.max(sub?.passed || 0, ...d.prior.map(x => x.passed));
   const visible = q.tests.filter(t => !t.hidden);
   const hiddenN = q.tests.length - visible.length;
@@ -81,6 +69,8 @@ export function Solve() {
       }
     } finally { setBusy(null); }
   });
+  // if the exam is auto-submitted while this question is open, whatever is in the editor is graded and saved first
+  submitRef.current = () => (!sub && !locked && !busy ? run(true) : null);
   const shortcut = k => { if (!busy) k === 'run' ? run(false) : !locked && setConfirm(true); };
   const shown = res ? res.r.map((x, i) => ({ x, t: res.tests[i] })).filter(({ t }) => !t.hidden) : [];
 
@@ -104,7 +94,7 @@ export function Solve() {
         </div>
       </div>
 
-      {locked && <div className="warnbar"><Icon name="lock" size={18} />You've used your one attempt on this question. Subscribe to submit again.</div>}
+      {locked && <div className="warnbar"><Icon name="lock" size={18} />You've used your one submission for this question{testId === 'practice' ? '' : ' in this test'}. Subscribe to submit again.</div>}
 
       <div className="ws">
         <section className="card stack" style={{ padding: 0, overflow: 'hidden' }}>
