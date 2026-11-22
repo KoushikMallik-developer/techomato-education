@@ -20,6 +20,8 @@ React + Vite + Tailwind + Firebase (Auth, Firestore).
 
 ## Demo mode (no Firebase needed)
 
+If `VITE_FIREBASE_API_KEY` is not set, `npm run dev` and `npm run build` fall back to this same demo mode (the terminal prints a warning) instead of crashing. Always set the key before a real deploy.
+
 `npm run demo` swaps Firebase for an in-memory stand-in (`src/demo/`) with sample data saved in the browser's localStorage. The login page shows one-click buttons for Admin, Trainer, Free student and Subscribed student (password `demo123`). It never touches Firebase, and `npm run dev` / `npm run build` are unaffected.
 
 ## Where things live
