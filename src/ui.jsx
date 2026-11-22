@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 /* ---------- icons + logo (paths copied from the artifact) ---------- */
@@ -71,8 +71,14 @@ export const Empty = ({ title, body, action }) => (
   </div>
 );
 export function Modal({ children, onClose }) {
+  const box = useRef();
   useEffect(() => { const k = e => e.key === 'Escape' && onClose(); addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [onClose]);
-  return <div className="modal-bg" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>{children}</div></div>;
+  useEffect(() => { // move focus into the dialog, give it back on close (shortcut: Tab can still leave the dialog)
+    const prev = document.activeElement;
+    box.current?.querySelector('button, [href], input, select, textarea')?.focus();
+    return () => prev?.focus?.();
+  }, []);
+  return <div className="modal-bg" onClick={onClose}><div ref={box} className="modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>{children}</div></div>;
 }
 
 export const ENV_LABEL = { python: 'Python', js: 'JavaScript', cpp: 'C / C++', web: 'HTML / CSS / JS' };
@@ -102,6 +108,11 @@ export function Toast() {
   return msg ? <div className="toast" role="status">{msg}</div> : <div role="status" className="sr" />;
 }
 export const attempt = async fn => { try { await fn(); } catch (e) { notify(e.message); } };
+// attempt() that ignores a second click while the first is still running (stops duplicate payments/rows)
+export function useBusy() {
+  const [busy, setBusy] = useState(false), on = useRef(false);
+  return [busy, async fn => { if (on.current) return; on.current = true; setBusy(true); try { await attempt(fn); } finally { on.current = false; setBusy(false); } }];
+}
 
 /* ---------- data loading ---------- */
 export function useLoad(fn, deps = []) {
@@ -109,9 +120,8 @@ export function useLoad(fn, deps = []) {
   const [n, setN] = useState(0);
   useEffect(() => {
     let live = true;
-    fn().then(d => live && setData(d)).catch(e => { console.error(e); live && setData(null); });
+    fn().then(d => live && setData(d)).catch(e => { console.error(e); if (live) { setData(null); notify('Could not load this page. Check your connection and refresh.'); } });
     return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, n]);
   return [data, () => setN(x => x + 1)];
 }

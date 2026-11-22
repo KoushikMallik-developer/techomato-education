@@ -7,11 +7,16 @@ const LIMIT = 5000;
 let worker, ready;
 function boot() {
   worker = new Worker(import.meta.env.BASE_URL + 'pyodide-worker.js');
-  ready = new Promise(res => { worker.onmessage = e => e.data.ready && res(); });
+  ready = new Promise((res, rej) => {
+    const fail = () => { worker?.terminate(); worker = null; rej(new Error('Could not load the Python runner. Check your connection and try again.')); };
+    const t = setTimeout(fail, 30000);
+    worker.onerror = fail;
+    worker.onmessage = e => { if (e.data.ready) { clearTimeout(t); res(); } };
+  });
 }
 async function runPy(code, input) {
   if (!worker) boot();
-  await ready; // loading Pyodide (first run only) doesn't count against the time limit
+  await ready; // rejects if the CDN is unreachable; loading Pyodide (first run only) doesn't count against the time limit
   return new Promise(resolve => {
     const timer = setTimeout(() => { worker.terminate(); worker = null; resolve({ err: 'Time limit exceeded' }); }, LIMIT);
     worker.onmessage = e => { clearTimeout(timer); resolve(e.data); };

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, query, updateDoc, where } from 'firebase/firestore';
-import { db, list } from '../firebase.js';
-import { useMe } from '../auth.jsx';
-import { scoreTable } from '../score.js';
-import { Avatar, Btn, CodeBlock, Empty, Icon, Loading, Modal, attempt, notify, useLoad } from '../ui.jsx';
+import { arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, query, where, writeBatch } from 'firebase/firestore';
+import { db, list, listIn, questions } from '../../firebase.js';
+import { useMe } from '../../auth.jsx';
+import { scoreTable } from '../../score.js';
+import { Avatar, Btn, CodeBlock, Empty, Icon, Loading, Modal, attempt, notify, useBusy, useLoad } from '../../ui.jsx';
 
 // Staff view of a course. Admin: enroll students (and record the payment). Trainer: assign tests and read results.
 export default function CourseDetail() {
@@ -14,14 +14,19 @@ export default function CourseDetail() {
   const [pick, setPick] = useState('');
   const [amount, setAmount] = useState('');
   const [view, setView] = useState(null); // {student, test}
-  const [d, reload] = useLoad(async () => {
+  const [busy, run] = useBusy();
+  // big lists load once per visit; only the course and its submissions reload after an enroll/assign
+  const [lists] = useLoad(async () => {
+    const [users, tests, qs] = await Promise.all([list(collection(db, 'users')), list(collection(db, 'tests')), questions()]);
+    return { users, tests, qs, caseCount: Object.fromEntries(qs.map(q => [q.id, q.tests.length])) };
+  }, [id]);
+  const [cur, reload] = useLoad(async () => {
     const snap = await getDoc(doc(db, 'courses', id));
     if (!snap.exists()) return { gone: true };
     const course = { id, ...snap.data() };
-    const [users, tests, qs] = await Promise.all([list(collection(db, 'users')), list(collection(db, 'tests')), list(collection(db, 'questions'))]);
-    const subs = course.testIds.length ? await list(query(collection(db, 'submissions'), where('testId', 'in', course.testIds))) : [];
-    return { course, users, tests, qs, caseCount: Object.fromEntries(qs.map(q => [q.id, q.tests.length])), subs };
+    return { course, subs: await listIn(course.testIds, ids => query(collection(db, 'submissions'), where('testId', 'in', ids))) };
   }, [id]);
+  const d = lists && cur && { ...lists, ...cur };
   if (!d) return <Loading />;
   if (d.gone) return <Empty title="Course not found" action={<Link to="/" className="btn btn-ink">Back</Link>} />;
 
@@ -33,17 +38,30 @@ export default function CourseDetail() {
   const options = admin
     ? users.filter(u => u.role === 'student' && !course.students.includes(u.id)).map(u => [u.id, u.name])
     : tests.filter(t => !course.testIds.includes(t.id)).map(t => [t.id, t.title]);
-  const patch = (data, msg, extra) => attempt(async () => { await updateDoc(doc(db, 'courses', id), data); await extra?.(); setPick(''); setAmount(''); notify(msg); reload(); });
+  // one batch = all writes land or none do (no enrolled-but-unpaid students)
+  const commit = (msg, build) => run(async () => {
+    const b = writeBatch(db);
+    b.update(doc(db, 'courses', id), build.data);
+    build.extra?.(b);
+    await b.commit();
+    await build.after?.();
+    setPick(''); setAmount(''); notify(msg); reload();
+  });
+  const ping = (b, ids, text) => ids.forEach(userId => b.set(doc(collection(db, 'notifications')), { userId, text, link: `/course/${id}`, read: false, at: Date.now() }));
   const enroll = () => {
-    const student = users.find(u => u.id === pick);
-    const paid = Number(amount) || 0;
-    patch({ students: arrayUnion(pick) }, 'Student enrolled', async () => {
-      if (paid > 0) await addDoc(collection(db, 'payments'), { userId: pick, userName: student.name, courseId: id, courseTitle: course.title, amount: paid, at: Date.now() });
-      await ping([pick], `You were enrolled in ${course.title}`);
-    });
+    const student = users.find(u => u.id === pick), paid = Number(amount) || 0;
+    commit('Student enrolled', { data: { students: arrayUnion(pick) }, extra: b => {
+      if (paid > 0) b.set(doc(collection(db, 'payments')), { userId: pick, userName: student.name, courseId: id, courseTitle: course.title, amount: paid, at: Date.now() });
+      ping(b, [pick], `You were enrolled in ${course.title}`);
+    } });
   };
-  const ping = (ids, text) => Promise.all(ids.map(userId => addDoc(collection(db, 'notifications'), { userId, text, link: `/course/${id}`, read: false, at: Date.now() })));
-  const assign = () => patch({ testIds: arrayUnion(pick) }, 'Test assigned', () => ping(course.students, `New test in ${course.title}: ${tests.find(t => t.id === pick)?.title}`));
+  const assign = () => {
+    const text = `New test in ${course.title}: ${tests.find(t => t.id === pick)?.title}`, rest = course.students.slice(450);
+    // a batch holds 500 writes: course update + 450 notifications here, any more students are notified in follow-up batches
+    commit('Test assigned', { data: { testIds: arrayUnion(pick) }, extra: b => ping(b, course.students.slice(0, 450), text), after: async () => {
+      for (let i = 0; i < rest.length; i += 450) { const b = writeBatch(db); ping(b, rest.slice(i, i + 450), text); await b.commit(); }
+    } });
+  };
   const del = () => confirm(`Delete "${course.title}"? Students lose access. Submissions are kept.`) && attempt(async () => { await deleteDoc(doc(db, 'courses', id)); notify('Course deleted'); nav('/' + (admin ? 'courses' : '')); });
   const scored = rows.flatMap(r => r.cells).filter(Boolean);
   const avg = scored.length ? Math.round(scored.reduce((n, c) => n + (c.total ? (100 * c.passed) / c.total : 0), 0) / scored.length) : null;
@@ -77,7 +95,7 @@ export default function CourseDetail() {
             {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
           </select>
           {admin && <input className="input" style={{ maxWidth: 180 }} type="number" min="0" placeholder="Amount paid (₹)" aria-label="Amount paid" value={amount} onChange={e => setAmount(e.target.value)} />}
-          <Btn v="accent" disabled={!pick} onClick={() => (admin ? enroll() : assign())}>{admin ? 'Enroll' : 'Assign'}</Btn>
+          <Btn v="accent" disabled={!pick || busy} onClick={() => (admin ? enroll() : assign())}>{admin ? 'Enroll' : 'Assign'}</Btn>
         </div>
       </section>
 
@@ -101,7 +119,7 @@ export default function CourseDetail() {
                         </td>
                       );
                     })}
-                    {admin && <td><button className="btn btn-plain btn-sm" onClick={() => patch({ students: arrayRemove(student.id) }, 'Student removed')}>Remove</button></td>}
+                    {admin && <td><button className="btn btn-plain btn-sm" onClick={() => commit('Student removed', { data: { students: arrayRemove(student.id) } })}>Remove</button></td>}
                   </tr>
                 ))}
               </tbody>

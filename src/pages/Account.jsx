@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { sendPasswordResetEmail, updatePassword } from 'firebase/auth';
+import { sendPasswordResetEmail, signOut, updatePassword } from 'firebase/auth';
 import { collection, doc, query, updateDoc, where } from 'firebase/firestore';
-import { auth, db, list } from '../firebase.js';
+import { auth, db, list, questions } from '../firebase.js';
 import { useMe } from '../auth.jsx';
 import { Btn, Empty, ENV_LABEL, Field, Icon, Loading, Logo, attempt, notify, useLoad } from '../ui.jsx';
 
@@ -14,8 +14,8 @@ export function Notifications() {
   const [rows, reload] = useLoad(() => list(query(collection(db, 'notifications'), where('userId', '==', me.uid))));
   if (!rows) return <Loading />;
   const sorted = [...rows].sort((a, b) => b.at - a.at);
-  const open = n => attempt(async () => { if (!n.read) await updateDoc(doc(db, 'notifications', n.id), { read: true }); if (n.link) nav(n.link); else reload(); });
-  const readAll = () => attempt(async () => { await Promise.all(rows.filter(n => !n.read).map(n => updateDoc(doc(db, 'notifications', n.id), { read: true }))); reload(); });
+  const open = n => attempt(async () => { if (!n.read) await updateDoc(doc(db, 'notifications', n.id), { read: true }); dispatchEvent(new Event('tk-notifs')); if (n.link) nav(n.link); else reload(); });
+  const readAll = () => attempt(async () => { await Promise.all(rows.filter(n => !n.read).map(n => updateDoc(doc(db, 'notifications', n.id), { read: true }))); dispatchEvent(new Event('tk-notifs')); reload(); });
   return (
     <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
       <div className="between">
@@ -49,11 +49,12 @@ export function Settings() {
   const pick = t => { setTheme(t); applyTheme(t); try { localStorage.setItem('tk-theme', t); } catch { /* private mode: theme just won't persist */ } };
   return (
     <div className="stack" style={{ gap: 16, maxWidth: 640 }}>
-      <form className="card stack" style={{ gap: 14 }} onSubmit={e => { e.preventDefault(); attempt(async () => { await updateDoc(doc(db, 'users', me.uid), { name: name.trim() }); notify('Name updated'); }); }}>
+      <form className="card stack" style={{ gap: 14 }} onSubmit={e => { e.preventDefault(); attempt(async () => { await updateDoc(doc(db, 'users', me.uid), { name: name.trim() }); await updateDoc(doc(db, 'leaderboard', me.uid), { name: name.trim() }).catch(() => {}); notify('Name updated'); }); }}>
         <h3 className="h3" style={{ fontSize: 20 }}>Profile</h3>
-        <Field label="Display name"><input className="input" required value={name} onChange={e => setName(e.target.value)} /></Field>
+        <Field label="Display name"><input className="input" required disabled={me.role !== 'student'} value={name} onChange={e => setName(e.target.value)} /></Field>
+        {me.role !== 'student' && <span className="small muted">Ask an admin to change your name: it is shown on course pages.</span>}
         <div className="small muted">Signed in as {me.email}</div>
-        <Btn v="ink" className="" style={{ alignSelf: 'flex-start' }}>Save name</Btn>
+        <Btn v="ink" className="" style={{ alignSelf: 'flex-start' }} disabled={me.role !== 'student'}>Save name</Btn>
       </form>
       <section className="card stack" style={{ gap: 12 }}>
         <h3 className="h3" style={{ fontSize: 20 }}>Appearance</h3>
@@ -65,11 +66,13 @@ export function Settings() {
         <Btn v="ink" style={{ alignSelf: 'flex-start' }}>Change password</Btn>
         <span className="small muted">If it says you need to log in again, log out and back in, then retry.</span>
       </form>
+      <button className="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
     </div>
   );
 }
 
 /* ---------- search ---------- */
+const Section = ({ title, children }) => <section className="stack" style={{ gap: 8 }}><h2 className="h3" style={{ fontSize: 20 }}>{title}</h2><div className="card" style={{ padding: 6 }}>{children}</div></section>;
 export function SearchPage() {
   const me = useMe();
   const [sp, setSp] = useSearchParams();
@@ -77,25 +80,22 @@ export function SearchPage() {
   const [text, setText] = useState(sp.get('q') || '');
   const [d] = useLoad(async () => ({
     courses: await list(me.role === 'student' ? query(collection(db, 'courses'), where('students', 'array-contains', me.uid)) : me.role === 'trainer' ? query(collection(db, 'courses'), where('trainerId', '==', me.uid)) : collection(db, 'courses')),
-    qs: await list(collection(db, 'questions')),
-    people: me.role === 'student' ? await list(collection(db, 'leaderboard')) : [],
+    qs: await questions(),
   }));
   const has = s => s.toLowerCase().includes(q);
   const hit = d && q.length >= 2 && {
     courses: d.courses.filter(c => has(`${c.title} ${c.description}`)),
     qs: d.qs.filter(x => has(`${x.title} ${x.topic || ''} ${x.statement}`)),
-    people: d.people.filter(p => has(p.name)),
   };
-  const Section = ({ title, children }) => <section className="stack" style={{ gap: 8 }}><h2 className="h3" style={{ fontSize: 20 }}>{title}</h2><div className="card" style={{ padding: 6 }}>{children}</div></section>;
   return (
     <div className="stack" style={{ gap: 18 }}>
       <form role="search" className="row" onSubmit={e => { e.preventDefault(); setSp({ q: text }); }}>
         <label className="sr" htmlFor="sq">Search</label>
-        <input id="sq" className="input" type="search" autoFocus placeholder="Search courses, questions, people…" value={text} onChange={e => setText(e.target.value)} style={{ minHeight: 54, fontSize: 17 }} />
+        <input id="sq" className="input" type="search" autoFocus placeholder="Search courses and questions…" value={text} onChange={e => setText(e.target.value)} style={{ minHeight: 54, fontSize: 17 }} />
         <button className="btn btn-ink btn-lg" type="submit">Search</button>
       </form>
       {!d ? <Loading /> : !hit ? <Empty title="Search everything" body="Find courses and practice questions. Try a topic like “strings”." /> : (
-        hit.courses.length + hit.qs.length + hit.people.length === 0 ? <Empty title={`No results for “${sp.get('q')}”`} body="Check the spelling, or try a broader word." /> : (
+        hit.courses.length + hit.qs.length === 0 ? <Empty title={`No results for “${sp.get('q')}”`} body="Check the spelling, or try a broader word." /> : (
           <>
             {hit.qs.length > 0 && <Section title="Questions">{hit.qs.map(x => (
               <Link key={x.id} to={me.role === 'student' ? `/solve/practice/${x.id}` : '/questions'} className="rowlink">
@@ -103,8 +103,6 @@ export function SearchPage() {
               </Link>))}</Section>}
             {hit.courses.length > 0 && <Section title="Courses">{hit.courses.map(c => (
               <Link key={c.id} to={`/course/${c.id}`} className="rowlink"><b>{c.title}</b><span className="small muted">{c.trainerName}</span></Link>))}</Section>}
-            {hit.people.length > 0 && <Section title="People">{hit.people.map(p => (
-              <Link key={p.id} to="/leaderboard" className="rowlink"><b>{p.name}</b><span className="small muted mono">{p.xp} XP</span></Link>))}</Section>}
           </>
         )
       )}
@@ -120,7 +118,7 @@ export function Forgot() {
     <div className="auth">
       <aside className="auth-art"><Link to="/" style={{ textDecoration: 'none' }}><Logo /></Link><span /><span className="small" style={{ color: '#9CA0AB' }}>Courses, tests and results, in one place.</span></aside>
       <main className="auth-form">
-        <form className="auth-box" onSubmit={e => { e.preventDefault(); attempt(async () => { await sendPasswordResetEmail(auth, email).catch(() => {}); setSent(true); }); }}>
+        <form className="auth-box" onSubmit={e => { e.preventDefault(); attempt(async () => { await sendPasswordResetEmail(auth, email).catch(e => { if (e.code !== 'auth/user-not-found') throw e; }); setSent(true); }); }}>
           <div className="mobile-logo"><Logo size={26} /></div>
           <h1 className="h2" style={{ fontSize: 38 }}>Reset your password</h1>
           {sent ? (

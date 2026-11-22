@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Icon } from '../ui.jsx';
+import { Icon } from '../../ui.jsx';
 import { PublicPage } from './PublicLayout.jsx';
 
 const Head = ({ title, sub }) => (

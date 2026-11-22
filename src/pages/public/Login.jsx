@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase.js';
-import { attempt, highlight, Logo } from '../ui.jsx';
+import { auth } from '../../firebase.js';
+import { attempt, highlight, Logo } from '../../ui.jsx';
 
 const SAMPLE = 'def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)';
 const DEMOS = [['Admin', 'admin@demo.com'], ['Trainer', 'trainer@demo.com'], ['Student (free)', 'student@demo.com'], ['Student (subscribed)', 'pro@demo.com']];
@@ -13,7 +13,9 @@ export default function Login() {
   const [err, setErr] = useState('');
   const signIn = (e, p) => attempt(async () => {
     setErr('');
-    try { await signInWithEmailAndPassword(auth, e, p); } catch { setErr('Wrong email or password.'); }
+    try { await signInWithEmailAndPassword(auth, e, p); } catch (x) {
+      setErr(x.code === 'auth/network-request-failed' ? 'No connection. Try again.' : x.code === 'auth/too-many-requests' ? 'Too many attempts. Wait a few minutes.' : 'Wrong email or password.');
+    }
   });
   return (
     <div className="auth">

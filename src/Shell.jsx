@@ -8,8 +8,8 @@ import { Avatar, Icon, Logo } from './ui.jsx';
 
 // group -> [label, path, icon, extra path prefixes that also highlight the item]
 export const NAV = {
-  admin: [['Manage', [['Overview', '/', 'chart'], ['Courses', '/courses', 'book', ['/course/']], ['Users', '/users', 'users'], ['Payments', '/payments', 'doc']]]],
-  trainer: [['Teach', [['My courses', '/', 'book', ['/course/']], ['Question bank', '/questions', 'code'], ['Tests', '/tests', 'clip']]]],
+  admin: [['Manage', [['Overview', '/', 'chart'], ['Courses', '/courses', 'book', ['/course/']], ['Users', '/users', 'users'], ['Payments', '/payments', 'doc']]], ['Account', [['Settings', '/settings', 'gear']]]],
+  trainer: [['Teach', [['My courses', '/', 'book', ['/course/']], ['Question bank', '/questions', 'code'], ['Tests', '/tests', 'clip']]], ['Account', [['Settings', '/settings', 'gear']]]],
   student: [
     ['Learning', [['Dashboard', '/', 'home'], ['Courses', '/courses', 'book', ['/course/', '/test/', '/solve/']]]],
     ['Practice', [['Problems', '/problems', 'list', ['/solve/practice/']], ['Daily contest', '/contest', 'flame'], ['Playground', '/playground', 'play'], ['Cheat sheets', '/cheatsheets', 'doc']]],
@@ -17,7 +17,7 @@ export const NAV = {
     ['Account', [['Profile', '/profile', 'user'], ['Notifications', '/notifications', 'bell'], ['Settings', '/settings', 'gear']]],
   ],
 };
-const TABS = { admin: 4, trainer: 3 }; // phone tab bar shows the first N items
+const TABS = { admin: 4, trainer: 3 }; // phone tab bar shows the first N items; Settings (with Log out) is the last tab for staff
 const STUDENT_TABS = [['Home', '/', 'home', ['/test/']], ['Learn', '/courses', 'book', ['/course/']], ['Contest', '/contest', 'flame'], ['Search', '/search', 'search'], ['More', '/more', 'more']];
 
 export default function Shell({ title, children }) {
@@ -30,13 +30,16 @@ export default function Shell({ title, children }) {
   const dark = admin ? { background: 'var(--panel)', color: '#E7E8EC', borderRight: 0 } : undefined;
   const linkStyle = item => (admin ? (on(item) ? { background: '#F5F2EC', color: '#17181C' } : { color: '#E7E8EC' }) : undefined);
   const student = me.role === 'student';
-  const tabs = student ? STUDENT_TABS : all.slice(0, TABS[me.role]);
+  const tabs = student ? STUDENT_TABS : [...all.slice(0, TABS[me.role]), all[all.length - 1]];
   const nav = useNavigate();
   const [unread, setUnread] = useState(0);
   const [q, setQ] = useState('');
   useEffect(() => {
     if (!student) return;
-    list(query(collection(db, 'notifications'), where('userId', '==', me.uid))).then(r => setUnread(r.filter(n => !n.read).length), () => {});
+    const load = () => list(query(collection(db, 'notifications'), where('userId', '==', me.uid), where('read', '==', false))).then(r => setUnread(r.length), () => {});
+    load();
+    addEventListener('tk-notifs', load); // fired by the Notifications page after marking read
+    return () => removeEventListener('tk-notifs', load);
   }, [pathname, me.uid, student]); // shortcut: refetched on navigation, not live
 
   return (
@@ -96,9 +99,8 @@ export default function Shell({ title, children }) {
         {children}
       </div>
 
-      <nav className="tabbar" aria-label="Tabs" style={{ gridTemplateColumns: `repeat(${tabs.length + (student ? 0 : 1)},minmax(0,1fr))` }}>
+      <nav className="tabbar" aria-label="Tabs" style={{ gridTemplateColumns: `repeat(${tabs.length},minmax(0,1fr))` }}>
         {tabs.map(item => <Link key={item[1]} to={item[1]} aria-current={on(item) ? 'page' : undefined}><Icon name={item[2]} size={22} />{item[0]}</Link>)}
-        {!student && <button onClick={() => signOut(auth)}><Icon name="logout" size={22} />Log out</button>}
       </nav>
     </div>
   );

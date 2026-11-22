@@ -8,8 +8,8 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null && (request.auth.uid == uid || staff());
       allow write: if request.auth != null && role() == 'admin';
-      // anyone may change their own display name, nothing else
-      allow update: if request.auth != null && request.auth.uid == uid
+      // students may change their own display name, nothing else (trainer names are copied onto courses)
+      allow update: if request.auth != null && request.auth.uid == uid && role() == 'student'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
     }
     // Bootstrap: the first admin is created by hand in the console (see README); it can't be self-created.
@@ -60,7 +60,8 @@ service cloud.firestore {
       allow read: if request.auth != null && (staff() || resource.data.userId == request.auth.uid);
       allow create: if request.auth != null && role() == 'student'
         && request.resource.data.userId == request.auth.uid
-        && sid == request.auth.uid + '_' + request.resource.data.testId + '_' + request.resource.data.questionId;
+        && sid == request.auth.uid + '_' + request.resource.data.testId + '_' + request.resource.data.questionId
+        && (request.resource.data.testId == 'practice' || exists(/databases/$(database)/documents/tests/$(request.resource.data.testId)));
       allow update: if request.auth != null && role() == 'student' && me().subscribed == true
         && request.resource.data.userId == request.auth.uid;
     }

@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, query, serverTimestamp, where } from 'firebase/firestore';
-import { db, list } from '../firebase.js';
-import { useMe } from '../auth.jsx';
-import { Btn, CourseGrid, ENV_LABEL, Empty, STARTERS, Field, Icon, Loading, attempt, notify, useLoad } from '../ui.jsx';
+import { db, forgetQuestions, list } from '../../firebase.js';
+import { useMe } from '../../auth.jsx';
+import { Btn, CourseGrid, ENV_LABEL, Empty, STARTERS, Field, Icon, Loading, attempt, notify, useBusy, useLoad } from '../../ui.jsx';
 
 const blank = { input: '', output: '', expr: '', desc: '', hidden: false };
 
-const remove = (col, item, reload) => confirm(`Delete "${item.title}"? Tests that use it will lose it.`) && attempt(async () => { await deleteDoc(doc(db, col, item.id)); notify('Deleted'); reload(); });
+const remove = (col, item, reload) => confirm(`Delete "${item.title}"? Tests that use it will lose it.`) && attempt(async () => { await deleteDoc(doc(db, col, item.id)); if (col === 'questions') forgetQuestions(); notify('Deleted'); reload(); });
 
 export function TrainerCourses() {
   const me = useMe();
@@ -25,14 +25,16 @@ function QuestionForm({ onSaved }) {
   const [starter, setStarter] = useState(STARTERS.python);
   const [tests, setTests] = useState([{ ...blank }]);
   const web = env === 'web';
+  const [busy, run] = useBusy();
   const pickEnv = v => { setEnv(v); setStarter(STARTERS[v]); setTests([{ ...blank }]); };
   const edit = (i, patch) => setTests(tests.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const save = e => {
     e.preventDefault();
-    attempt(async () => {
+    run(async () => {
       const ok = tests.filter(t => (web ? t.expr.trim() : t.output.trim()));
       if (!ok.length) throw new Error('Add at least one complete test case');
       await addDoc(collection(db, 'questions'), { title, statement, env, starter, diff, topic: topic.trim(), tests: ok, authorId: me.uid, createdAt: serverTimestamp() });
+      forgetQuestions();
       notify('Saved to the question bank');
       onSaved();
     });
@@ -75,12 +77,13 @@ function QuestionForm({ onSaved }) {
         ))}
         <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setTests([...tests, { ...blank }])}><Icon name="plus" size={16} />Test case</button>
       </div>
-      <div><Btn v="accent">Save to question bank</Btn></div>
+      <div><Btn v="accent" disabled={busy}>Save to question bank</Btn></div>
     </form>
   );
 }
 
 export function Questions() {
+  const me = useMe();
   const [qs, reload] = useLoad(() => list(collection(db, 'questions')));
   const [open, setOpen] = useState(false);
   if (!qs) return <Loading />;
@@ -97,7 +100,7 @@ export function Questions() {
             <div key={q.id} className="between" style={{ padding: 12 }}>
               <b>{q.title}</b>
               <span className="row small"><span className="chip">{ENV_LABEL[q.env]}</span><span className="muted">{q.tests.length} test cases</span>
-                <button className="icon-btn" aria-label={`Delete ${q.title}`} onClick={() => remove('questions', q, reload)}><Icon name="trash" size={16} /></button></span>
+                {(q.authorId === me.uid || me.role === 'admin') && <button className="icon-btn" aria-label={`Delete ${q.title}`} onClick={() => remove('questions', q, reload)}><Icon name="trash" size={16} /></button>}</span>
             </div>
           ))}
         </div>
@@ -112,10 +115,11 @@ export function TestsPage() {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [picked, setPicked] = useState([]);
+  const [busy, run] = useBusy();
   if (!data) return <Loading />;
   const save = e => {
     e.preventDefault();
-    attempt(async () => {
+    run(async () => {
       if (!picked.length) throw new Error('Choose at least one question');
       await addDoc(collection(db, 'tests'), { title, questionIds: picked, authorId: me.uid, createdAt: serverTimestamp() });
       setTitle(''); setPicked([]); setOpen(false);
@@ -144,14 +148,14 @@ export function TestsPage() {
               );
             }) : <span className="muted small">Add questions to the bank first.</span>}
           </div>
-          <div><Btn v="accent">Create test</Btn></div>
+          <div><Btn v="accent" disabled={busy}>Create test</Btn></div>
         </form>
       )}
       {data.tests.length === 0 ? <Empty title="No tests yet" /> : data.tests.map(t => (
         <article key={t.id} className="card between">
           <h2 className="h3" style={{ fontSize: 22 }}>{t.title}</h2>
           <span className="row"><span className="small muted">{t.questionIds.length} questions</span>
-            <button className="icon-btn" aria-label={`Delete ${t.title}`} onClick={() => remove('tests', t, reload)}><Icon name="trash" size={16} /></button></span>
+            {(t.authorId === me.uid || me.role === 'admin') && <button className="icon-btn" aria-label={`Delete ${t.title}`} onClick={() => remove('tests', t, reload)}><Icon name="trash" size={16} /></button>}</span>
         </article>
       ))}
     </div>

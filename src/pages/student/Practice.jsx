@@ -2,16 +2,17 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, query, where } from 'firebase/firestore';
-import { auth, db, list } from '../firebase.js';
-import { useMe } from '../auth.jsx';
-import { NAV } from '../Shell.jsx';
-import { CodeBlock, ENV_LABEL, Empty, Icon, Loading, Tabs, useLoad } from '../ui.jsx';
+import { auth, db, list, questions } from '../../firebase.js';
+import { useMe } from '../../auth.jsx';
+import { dayIndex } from '../../score.js';
+import { NAV } from '../../Shell.jsx';
+import { CodeBlock, ENV_LABEL, Empty, Icon, Loading, Tabs, useLoad } from '../../ui.jsx';
 
 const mySubs = uid => list(query(collection(db, 'submissions'), where('userId', '==', uid)));
 export const solvedIds = subs => new Set(subs.filter(s => s.passed === s.total).map(s => s.questionId));
 
 /* The question of the day: the same for everyone, changes at midnight. shortcut: picks by day number, so adding questions reshuffles it. */
-export const dailyOf = qs => (qs.length ? [...qs].sort((a, b) => a.id.localeCompare(b.id))[Math.floor(Date.now() / 864e5) % qs.length] : null);
+export const dailyOf = qs => (qs.length ? [...qs].sort((a, b) => a.id.localeCompare(b.id))[dayIndex(new Date()) % qs.length] : null);
 
 export function useCountdown() {
   const [now, setNow] = useState(Date.now());
@@ -28,7 +29,7 @@ const Seg = ({ value, onChange, options }) => (
 
 export function Problems() {
   const me = useMe();
-  const [d] = useLoad(async () => ({ qs: await list(collection(db, 'questions')), subs: await mySubs(me.uid) }));
+  const [d] = useLoad(async () => ({ qs: await questions(), subs: await mySubs(me.uid) }));
   const [f, setF] = useState({ text: '', env: 'all', diff: 'all', status: 'all' });
   if (!d) return <Loading />;
   const done = solvedIds(d.subs);
@@ -72,9 +73,9 @@ export function Contest() {
   const me = useMe();
   const left = useCountdown();
   const [d] = useLoad(async () => {
-    const q = dailyOf(await list(collection(db, 'questions')));
-    const sub = q && (await getDoc(doc(db, 'submissions', `${me.uid}_practice_${q.id}`)));
-    return { q, sub: sub?.exists() ? sub.data() : null };
+    const q = dailyOf(await questions());
+    const all = q ? await mySubs(me.uid).then(a => a.filter(s => s.questionId === q.id)) : []; // any attempt counts: in a test or in practice
+    return { q, sub: all.sort((a, b) => b.passed - a.passed)[0] || null };
   });
   if (!d) return <Loading />;
   if (!d.q) return <Empty title="No contest today" body="The question bank is empty." />;
@@ -109,7 +110,7 @@ const BADGES = [
 ];
 export function Achievements() {
   const me = useMe();
-  const [d] = useLoad(async () => ({ subs: await mySubs(me.uid), qs: await list(collection(db, 'questions')), lb: (await getDoc(doc(db, 'leaderboard', me.uid))).data() || {} }));
+  const [d] = useLoad(async () => ({ subs: await mySubs(me.uid), qs: await questions(), lb: (await getDoc(doc(db, 'leaderboard', me.uid))).data() || {} }));
   if (!d) return <Loading />;
   const done = solvedIds(d.subs);
   const s = { subs: d.subs, solved: done.size, xp: d.lb.xp || 0, streak: d.lb.streak || 0, subscribed: !!me.subscribed,

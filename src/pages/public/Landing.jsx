@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Avatar, Icon, highlight } from '../ui.jsx';
+import { Avatar, Icon, highlight } from '../../ui.jsx';
 import { Footer, PublicNav } from './PublicLayout.jsx';
 
 const HERO_CODE = 'def count_pairs(nums, k):\n    nums.sort()\n    i, j, total = 0, len(nums) - 1, 0\n    while i < j:\n        if nums[i] + nums[j] < k:\n            total += j - i\n            i += 1\n        else:\n            j -= 1\n    return total';

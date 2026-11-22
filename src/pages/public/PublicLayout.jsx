@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Logo } from '../ui.jsx';
+import { Logo } from '../../ui.jsx';
 
 export function PublicNav({ onJump }) {
   return (

@@ -1,18 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { createLogin, db, list } from '../firebase.js';
-import { Avatar, Btn, CourseGrid, Empty, Field, Icon, Loading, attempt, notify, plural, useLoad } from '../ui.jsx';
+import { addDoc, collection, doc, getCountFromServer, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { createLogin, db, list } from '../../firebase.js';
+import { Avatar, Btn, CourseGrid, Empty, Field, Icon, Loading, attempt, notify, plural, useBusy, useLoad } from '../../ui.jsx';
 
 export function AdminCourses() {
   const [data, reload] = useLoad(async () => ({ courses: await list(collection(db, 'courses')), users: await list(collection(db, 'users')) }));
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ title: '', description: '', trainerId: '' });
+  const [busy, run] = useBusy();
   if (!data) return <Loading />;
   const trainers = data.users.filter(u => u.role === 'trainer');
   const add = e => {
     e.preventDefault();
-    attempt(async () => {
+    run(async () => {
       const t = trainers.find(x => x.id === f.trainerId);
       if (!t) throw new Error('Pick a trainer (create one in Users first)');
       await addDoc(collection(db, 'courses'), { title: f.title, description: f.description, trainerId: t.id, trainerName: t.name, students: [], testIds: [], createdAt: serverTimestamp() });
@@ -38,7 +39,7 @@ export function AdminCourses() {
               {trainers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Field>
-          <div><Btn v="accent">Save course</Btn></div>
+          <div><Btn v="accent" disabled={busy}>Save course</Btn></div>
         </form>
       )}
       <CourseGrid courses={data.courses} empty="No courses yet" />
@@ -50,11 +51,13 @@ export function AdminUsers() {
   const [users, reload] = useLoad(() => list(collection(db, 'users')));
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'student' });
+  const [busy, run] = useBusy();
   if (!users) return <Loading />;
   const add = e => {
     e.preventDefault();
-    attempt(async () => {
+    run(async () => {
       const uid = await createLogin(f.email, f.password);
+      if ((await getDoc(doc(db, 'users', uid))).exists()) throw new Error('That email already has an account.');
       await setDoc(doc(db, 'users', uid), { name: f.name, email: f.email, role: f.role, subscribed: false });
       setF({ name: '', email: '', password: '', role: 'student' });
       setOpen(false);
@@ -79,7 +82,7 @@ export function AdminUsers() {
               <option value="student">Student</option><option value="trainer">Trainer</option>
             </select>
           </Field>
-          <div><Btn v="accent">Create user</Btn></div>
+          <div><Btn v="accent" disabled={busy}>Create user</Btn></div>
         </form>
       )}
       <div className="card scroll-x" style={{ padding: 6 }}>
@@ -104,7 +107,7 @@ export function AdminUsers() {
 export function AdminOverview() {
   const [d] = useLoad(async () => ({
     users: await list(collection(db, 'users')), courses: await list(collection(db, 'courses')),
-    subs: await list(collection(db, 'submissions')), pays: await list(collection(db, 'payments')),
+    subs: (await getCountFromServer(collection(db, 'submissions'))).data().count, pays: await list(collection(db, 'payments')),
   }));
   if (!d) return <Loading />;
   const students = d.users.filter(u => u.role === 'student');
@@ -114,7 +117,7 @@ export function AdminOverview() {
     ['Students', students.length, `${students.filter(u => u.subscribed).length} subscribed`],
     ['Trainers', d.users.filter(u => u.role === 'trainer').length, 'teaching'],
     ['Courses', d.courses.length, `${d.courses.reduce((n, c) => n + c.students.length, 0)} enrollments`],
-    ['Revenue', '₹' + revenue.toLocaleString('en-IN'), `${plural(d.pays.length, 'payment')}, ${plural(d.subs.length, 'submission')}`],
+    ['Revenue', '₹' + revenue.toLocaleString('en-IN'), `${plural(d.pays.length, 'payment')}, ${plural(d.subs, 'submission')}`],
   ];
   return (
     <div className="stack" style={{ gap: 20 }}>
