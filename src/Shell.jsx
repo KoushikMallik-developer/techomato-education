@@ -4,7 +4,7 @@ import { collection, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db, list } from './firebase.js';
 import { useMe } from './auth.jsx';
-import { Avatar, Icon, Logo } from './ui.jsx';
+import { Avatar, DemoNote, Icon, Logo } from './ui.jsx';
 
 // group -> [label, path, icon, extra path prefixes that also highlight the item]
 export const NAV = {
@@ -73,7 +73,7 @@ export default function Shell({ title, children }) {
       </aside>
 
       <div className="main">
-        {import.meta.env.VITE_NO_KEY && <div role="status" className="small" style={{ padding: '6px 16px', background: 'var(--ink)', color: 'var(--paper)', textAlign: 'center' }}>Demo data: Firebase is not configured. Nothing is saved.</div>}
+        <DemoNote />
         <div className="topbar">
           <div className="row" style={{ minWidth: 0 }}>
             <span className="mobile-only"><Logo size={28} text={false} /></span>

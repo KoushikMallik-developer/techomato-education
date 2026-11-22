@@ -63,6 +63,8 @@ export const Tabs = ({ tabs, value, onChange, label }) => (
     {tabs.map(([k, l]) => <button key={k} role="tab" className="tab" aria-selected={value === k} onClick={() => onChange(k)}>{l}</button>)}
   </div>
 );
+// Shown when the app auto-fell-back to demo data (see vite.config.js).
+export const DemoNote = ({ style }) => import.meta.env.VITE_NO_KEY && <p role="status" className="small" style={{ margin: 0, marginBottom: 16, padding: '8px 12px', borderRadius: 8, background: 'var(--ink)', color: 'var(--paper)', textAlign: 'center', ...style }}>Demo data: Firebase is not configured. Nothing is saved.</p>;
 export const Empty = ({ title, body, action }) => (
   <div className="empty">
     <h2 className="h3" style={{ fontSize: 22 }}>{title}</h2>
