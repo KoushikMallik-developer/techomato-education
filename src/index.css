@@ -13,17 +13,18 @@
   --r-sm:10px;--r-md:16px;--r-lg:22px;
   color-scheme:light;
 }
+/* Dark palette: keep the two blocks below identical (system dark, forced dark). Coral is lighter here so it passes 4.5:1 as text and under dark button text. */
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --paper:#141417;--surface:#1C1D22;--ink:#F1EFEA;--ink-2:#C9CBD2;--muted:#A3A6AF;--line:#2C2E35;--soft:#25272D;
-    --accent:#D9482E;--accent-soft:#3A1E18;--accent-ink:#F2B8A8;
+    --accent:#E2573D;--on-accent:#17181C;--accent-soft:#3A1E18;--accent-ink:#F2B8A8;
     --pass:#9DB9F2;--pass-strong:#5B8DEF;--pass-soft:#1B2640;--warn:#F0B27A;--warn-soft:#3A2616;
     --panel:#0F1013;--panel-2:#1A1B20;--panel-line:#26282E;color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
     --paper:#141417;--surface:#1C1D22;--ink:#F1EFEA;--ink-2:#C9CBD2;--muted:#A3A6AF;--line:#2C2E35;--soft:#25272D;
-    --accent:#D9482E;--accent-soft:#3A1E18;--accent-ink:#F2B8A8;
+    --accent:#E2573D;--on-accent:#17181C;--accent-soft:#3A1E18;--accent-ink:#F2B8A8;
     --pass:#9DB9F2;--pass-strong:#5B8DEF;--pass-soft:#1B2640;--warn:#F0B27A;--warn-soft:#3A2616;
     --panel:#0F1013;--panel-2:#1A1B20;--panel-line:#26282E;color-scheme:dark;
 }
@@ -57,6 +58,7 @@ button{cursor:pointer}
 .btn-white{background:#fff;color:#17181C}
 .btn-lg{min-height:56px;padding:0 30px;font-size:17px}
 .btn-sm{min-height:36px;padding:0 14px;font-size:13px}
+@media (pointer:coarse){.btn-sm{min-height:44px}}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 .icon-btn{width:44px;height:44px;border-radius:999px;border:1px solid var(--line);background:var(--surface);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 
