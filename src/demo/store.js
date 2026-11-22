@@ -23,7 +23,7 @@ const seed = () => ({
     q6: { title: 'Count the words', env: 'js', diff: 'Medium', topic: 'Strings', authorId: 't1', statement: 'Read one line and print how many words it has.', starter: '// Read each input line with input(), print with console.log\n',
       tests: [{ input: 'the quick brown fox', output: '4' }, { input: 'hello', output: '1' }, { input: 'a b  c', output: '3', hidden: true }] },
   },
-  tests: { tt1: { title: 'Week 1 basics', questionIds: ['q1', 'q2', 'q3'], authorId: 't1' } },
+  tests: { tt1: { title: 'Week 1 basics', questionIds: ['q1', 'q2', 'q3'], proctored: true, authorId: 't1' } },
   courses: { c1: { title: 'Coding Foundations', description: 'Python, C++ and the web.', trainerId: 't1', trainerName: 'Demo Trainer', students: ['s1', 's2'], testIds: ['tt1'] } },
   leaderboard: {
     s2: { name: 'Rohan Kumar', xp: 240, streak: 5, lastDay: '' },

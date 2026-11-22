@@ -4,6 +4,7 @@ import { doc, getDoc, runTransaction, serverTimestamp, setDoc, where } from 'fir
 import { db } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { grade } from '../../runner.js';
+import * as proctor from '../../proctor.js';
 import { dayKey, nextStreak } from '../../score.js';
 import { CodeBlock, ENV_FILE, ENV_LABEL, Empty, Icon, Loading, Modal, Tabs, attempt, notify, useLoad } from '../../ui.jsx';
 import Editor from '../../Editor.jsx';
@@ -22,8 +23,8 @@ export function Solve() {
   const nav = useNavigate();
   const subId = `${me.uid}_${testId}_${qid}`;
   const [d] = useLoad(async () => {
-    const [q, sub, prior] = await Promise.all([get('questions', qid), getDoc(doc(db, 'submissions', subId)), mySubs(me.uid, [where('questionId', '==', qid)])]);
-    return { q, sub: sub.exists() ? sub.data() : null, prior }; // prior: every attempt at this question, in any test or practice
+    const [q, sub, prior, test] = await Promise.all([get('questions', qid), getDoc(doc(db, 'submissions', subId)), mySubs(me.uid, [where('questionId', '==', qid)]), testId === 'practice' ? null : get('tests', testId)]);
+    return { q, sub: sub.exists() ? sub.data() : null, prior, test }; // prior: every attempt at this question, in any test or practice
   }, [testId, qid]);
   const [code, setCode] = useState(null);
   const [res, setRes] = useState(null); // {r, tests, submitted}
@@ -32,9 +33,24 @@ export function Solve() {
   const [tab, setTab] = useState('problem');
   const [preview, setPreview] = useState('');
   const [saved, setSaved] = useState(null);
-  useEffect(() => { setCode(null); setRes(null); setSaved(null); setTab('problem'); }, [testId, qid]);
+  const [proctored, setProctored] = useState(() => proctor.active(testId));
+  useEffect(() => { setCode(null); setRes(null); setSaved(null); setTab('problem'); setProctored(proctor.active(testId)); }, [testId, qid]);
   if (!d) return <Loading />;
   if (!d.q) return <Empty title="This question was removed" body="Your trainer deleted it. Go back to the test." />;
+
+  if (d.test?.proctored && !proctored) {
+    return (
+      <div className="card stack" style={{ gap: 14, maxWidth: 560 }}>
+        <h2 className="h3" style={{ fontSize: 24 }}>This test is proctored</h2>
+        <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+          <li>It runs in fullscreen. Leaving fullscreen or switching tabs is recorded.</li>
+          <li>Your camera takes a small photo about once a minute. Your trainer can see these photos.</li>
+          <li>Copy, cut, paste and right-click are blocked and recorded.</li>
+        </ul>
+        <div className="row"><button className="btn btn-accent" onClick={() => attempt(async () => { await proctor.start(me.uid, testId); setProctored(true); })}>Allow camera and start</button><button className="btn btn-ghost" onClick={() => nav(-1)}>Back</button></div>
+      </div>
+    );
+  }
 
   const { q } = d;
   const sub = saved || d.sub;
@@ -72,6 +88,7 @@ export function Solve() {
           <button className="icon-btn" aria-label="Back" onClick={() => nav(-1)}><Icon name="back" size={18} /></button>
           <span className="chip">{ENV_LABEL[q.env]}</span>
           <span className="chip chip-accent">{q.tests.length} test cases</span>
+          {d.test?.proctored && <span className="chip chip-warn">Proctored</span>}
           {sub && sub.passed === sub.total && <span className="chip chip-pass"><Icon name="check" size={14} stroke={2.4} />Solved</span>}
         </div>
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>

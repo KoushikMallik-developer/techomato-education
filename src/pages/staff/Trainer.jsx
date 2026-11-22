@@ -115,14 +115,15 @@ export function TestsPage() {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [picked, setPicked] = useState([]);
+  const [proctored, setProctored] = useState(false);
   const [busy, run] = useBusy();
   if (!data) return <Loading />;
   const save = e => {
     e.preventDefault();
     run(async () => {
       if (!picked.length) throw new Error('Choose at least one question');
-      await addDoc(collection(db, 'tests'), { title, questionIds: picked, authorId: me.uid, createdAt: serverTimestamp() });
-      setTitle(''); setPicked([]); setOpen(false);
+      await addDoc(collection(db, 'tests'), { title, questionIds: picked, proctored, authorId: me.uid, createdAt: serverTimestamp() });
+      setTitle(''); setPicked([]); setProctored(false); setOpen(false);
       notify('Test created. Assign it from a course page.');
       reload();
     });
@@ -148,12 +149,13 @@ export function TestsPage() {
               );
             }) : <span className="muted small">Add questions to the bank first.</span>}
           </div>
+          <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={proctored} onChange={e => setProctored(e.target.checked)} /><span><b>Proctored</b> <span className="small muted">(fullscreen, camera photos each minute, tab switches and paste attempts are recorded)</span></span></label>
           <div><Btn v="accent" disabled={busy}>Create test</Btn></div>
         </form>
       )}
       {data.tests.length === 0 ? <Empty title="No tests yet" /> : data.tests.map(t => (
         <article key={t.id} className="card between">
-          <h2 className="h3" style={{ fontSize: 22 }}>{t.title}</h2>
+          <h2 className="h3" style={{ fontSize: 22 }}>{t.title}{t.proctored && <span className="chip chip-warn" style={{ marginLeft: 10 }}>Proctored</span>}</h2>
           <span className="row"><span className="small muted">{t.questionIds.length} questions</span>
             {(t.authorId === me.uid || me.role === 'admin') && <button className="icon-btn" aria-label={`Delete ${t.title}`} onClick={() => remove('tests', t, reload)}><Icon name="trash" size={16} /></button>}</span>
         </article>

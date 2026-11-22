@@ -4,6 +4,7 @@ import { collection, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db, list } from './firebase.js';
 import { useMe } from './auth.jsx';
+import { stop as stopProctor } from './proctor.js';
 import { Avatar, DemoNote, Icon, Logo } from './ui.jsx';
 
 // group -> [label, path, icon, extra path prefixes that also highlight the item]
@@ -34,6 +35,7 @@ export default function Shell({ title, children }) {
   const nav = useNavigate();
   const [unread, setUnread] = useState(0);
   const [q, setQ] = useState('');
+  useEffect(() => { if (!/^\/(solve|test)\//.test(pathname)) stopProctor(); }, [pathname]); // proctoring ends when the student leaves the test
   useEffect(() => {
     if (!student) return;
     const load = () => list(query(collection(db, 'notifications'), where('userId', '==', me.uid), where('read', '==', false))).then(r => setUnread(r.length), () => {});

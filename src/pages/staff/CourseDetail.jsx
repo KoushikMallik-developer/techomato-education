@@ -4,6 +4,7 @@ import { arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, query, whe
 import { db, list, listIn, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { scoreTable } from '../../score.js';
+import { KIND_LABEL } from '../../proctor.js';
 import { Avatar, Btn, CodeBlock, Empty, Icon, Loading, Modal, attempt, notify, useBusy, useLoad } from '../../ui.jsx';
 
 // Staff view of a course. Admin: enroll students (and record the payment). Trainer: assign tests and read results.
@@ -24,13 +25,15 @@ export default function CourseDetail() {
     const snap = await getDoc(doc(db, 'courses', id));
     if (!snap.exists()) return { gone: true };
     const course = { id, ...snap.data() };
-    return { course, subs: await listIn(course.testIds, ids => query(collection(db, 'submissions'), where('testId', 'in', ids))) };
+    const byTest = col => listIn(course.testIds, ids => query(collection(db, col), where('testId', 'in', ids)));
+    return { course, subs: await byTest('submissions'), flags: await byTest('proctor') }; // flags: small proctoring events; the photos load only when a result is opened
   }, [id]);
   const d = lists && cur && { ...lists, ...cur };
   if (!d) return <Loading />;
   if (d.gone) return <Empty title="Course not found" action={<Link to="/" className="btn btn-ink">Back</Link>} />;
 
-  const { course, users, tests, qs, caseCount, subs } = d;
+  const { course, users, tests, qs, caseCount, subs, flags } = d;
+  const flagsOf = (uid, tid) => flags.filter(f => f.userId === uid && f.testId === tid);
   const admin = me.role === 'admin';
   const enrolled = users.filter(u => course.students.includes(u.id));
   const assigned = course.testIds.map(t => tests.find(x => x.id === t)).filter(Boolean);
@@ -116,6 +119,7 @@ export default function CourseDetail() {
                       return (
                         <td key={i}>
                           {c ? <button className={`chip ${pct >= 60 ? 'chip-pass' : 'chip-warn'}`} style={{ border: 0 }} title="View submissions" onClick={() => setView({ student, test: assigned[i] })}>{c.passed}/{c.total} · {pct}%</button> : <span className="small muted">Not attempted</span>}
+                          {assigned[i].proctored && flagsOf(student.id, assigned[i].id).length > 0 && <button className="chip chip-warn" style={{ border: 0, marginLeft: 6 }} title="View proctoring evidence" onClick={() => setView({ student, test: assigned[i] })}>{flagsOf(student.id, assigned[i].id).length} flags</button>}
                         </td>
                       );
                     })}
@@ -133,6 +137,7 @@ export default function CourseDetail() {
         <Modal onClose={() => setView(null)}>
           <div style={{ maxHeight: '75vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <h2 className="h3" style={{ fontSize: 24 }}>{view.student.name}, {view.test.title}</h2>
+            {view.test.proctored && <Proctoring uid={view.student.id} test={view.test} events={flagsOf(view.student.id, view.test.id)} />}
             {view.test.questionIds.map(qid => {
               const q = qs.find(x => x.id === qid);
               const s = subs.find(x => x.userId === view.student.id && x.testId === view.test.id && x.questionId === qid);
@@ -148,5 +153,25 @@ export default function CourseDetail() {
         </Modal>
       )}
     </div>
+  );
+}
+
+// Proctoring evidence for one student on one test: the event log and the webcam photos.
+function Proctoring({ uid, test, events }) {
+  const [snaps] = useLoad(() => list(query(collection(db, 'snaps'), where('userId', '==', uid), where('testId', '==', test.id))), [uid, test.id]);
+  const sorted = [...events].sort((a, b) => a.at - b.at);
+  const photos = snaps && [...snaps].sort((a, b) => a.at - b.at);
+  return (
+    <section className="stack" style={{ gap: 8, background: 'var(--paper)', borderRadius: 14, padding: 14 }}>
+      <b>Proctoring</b>
+      {sorted.length === 0 ? <span className="small muted">No flags recorded.</span> : (
+        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{sorted.map(e => <li key={e.id}>{new Date(e.at).toLocaleTimeString()}: {KIND_LABEL[e.kind] || e.kind}</li>)}</ul>
+      )}
+      {!photos ? <span className="small muted">Loading photos…</span> : photos.length === 0 ? <span className="small muted">No camera photos.</span> : (
+        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+          {photos.map(p => <img key={p.id} src={p.img} width={120} height={90} alt={`Camera photo at ${new Date(p.at).toLocaleTimeString()}`} title={new Date(p.at).toLocaleTimeString()} style={{ borderRadius: 8, objectFit: 'cover' }} />)}
+        </div>
+      )}
+    </section>
   );
 }
