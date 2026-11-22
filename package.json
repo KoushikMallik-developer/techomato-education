@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "demo": "vite --mode demo",
-    "build": "vite build",
+    "build": "npm run lint && vite build",
     "test": "node --test src/score.test.js",
     "lint": "eslint src public"
   },
