@@ -4,7 +4,7 @@ import { sendPasswordResetEmail, signOut, updatePassword } from 'firebase/auth';
 import { collection, doc, query, updateDoc, where } from 'firebase/firestore';
 import { auth, db, list, questions } from '../firebase.js';
 import { useMe } from '../auth.jsx';
-import { Btn, Empty, ENV_LABEL, Field, Icon, Loading, Logo, attempt, notify, useLoad } from '../ui.jsx';
+import { Btn, Empty, ENV_LABEL, Field, Icon, Loading, Logo, attempt, notify, useBusy, useLoad } from '../ui.jsx';
 
 /* ---------- notifications ---------- */
 const ago = t => { const m = Math.max(1, Math.round((Date.now() - t) / 60000)); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
@@ -114,11 +114,12 @@ export function SearchPage() {
 export function Forgot() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [busy, run] = useBusy();
   return (
     <div className="auth">
       <aside className="auth-art"><Link to="/" style={{ textDecoration: 'none' }}><Logo /></Link><span /><span className="small" style={{ color: '#9CA0AB' }}>Courses, tests and results, in one place.</span></aside>
       <main className="auth-form">
-        <form className="auth-box" onSubmit={e => { e.preventDefault(); attempt(async () => { await sendPasswordResetEmail(auth, email).catch(e => { if (e.code !== 'auth/user-not-found') throw e; }); setSent(true); }); }}>
+        <form className="auth-box" onSubmit={e => { e.preventDefault(); run(async () => { await sendPasswordResetEmail(auth, email).catch(e => { if (e.code !== 'auth/user-not-found') throw e; }); setSent(true); }); }}>
           <div className="mobile-logo"><Logo size={26} /></div>
           <h1 className="h2" style={{ fontSize: 38 }}>Reset your password</h1>
           {sent ? (
@@ -130,7 +131,7 @@ export function Forgot() {
             <>
               <p className="muted" style={{ margin: 0 }}>Enter the email your admin used for your account.</p>
               <Field label="Email"><input className="input" type="email" required value={email} onChange={e => setEmail(e.target.value)} /></Field>
-              <Btn v="ink" className="btn-lg">Send reset link</Btn>
+              <Btn v="ink" className="btn-lg" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</Btn>
               <Link to="/login" className="small" style={{ textAlign: 'center' }}>Back to log in</Link>
             </>
           )}
