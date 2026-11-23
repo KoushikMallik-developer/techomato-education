@@ -1,6 +1,7 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, getFirestore, getDocs } from 'firebase/firestore';
+import { collection, getFirestore, getDocs, query, where } from 'firebase/firestore';
+import { newCode } from './schedule.js';
 
 const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -38,3 +39,9 @@ export async function createLogin(email, password) {
     return user.uid;
   } finally { await deleteApp(tmp); }
 }
+
+// An ID nobody else has in this collection (T-... for tests, C-... for courses): random, checked against what exists.
+export const freeCode = async (col, prefix) => {
+  for (let i = 0; i < 5; i++) { const c = newCode(prefix); if ((await getDocs(query(collection(db, col), where('code', '==', c)))).empty) return c; }
+  throw new Error('Could not make a unique ID, try again');
+};

@@ -1,6 +1,6 @@
-import { addDoc, collection, doc, getDoc, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDoc, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db, list } from './firebase.js';
-import { DARK } from './precheck.js';
+import { DARK, pickCause } from './precheck.js';
 
 // Free, browser-only proctoring for tests marked "proctored" (Firestore only, no paid Storage).
 //  - Countdown (10 s, then the exam is auto-submitted): no face, covered camera, camera stopped. It cancels if the problem clears.
@@ -37,7 +37,13 @@ export const KIND_LABEL = {
   cut: 'Tried to cut',
   'right-click': 'Right-clicked',
 };
-export const isFlag = e => !(e.kind === 'start' || e.kind === 'finished' || e.kind.endsWith('-cleared')); // the rest are just the story of the exam
+const quiet = k => k === 'start' || k === 'finished' || k.endsWith('-cleared'); // these are just the story of the exam, not flags
+const FLAG_KINDS = Object.keys(KIND_LABEL).filter(k => !quiet(k));
+// Flag counts for every (student, test) pair in one course as {uid_testId: n}: one cheap count query per pair, never the events themselves.
+// shortcut: one count query per pair, fine to about 200 students; beyond that keep a summary document per student.
+export const flagMap = async (courseId, uids, testIds) => Object.fromEntries(await Promise.all(uids.flatMap(u => testIds.map(async t => [`${u}_${t}`, await flagCount(u, courseId, t)]))));
+// How many flags a student has on a test. A count query costs one read, so tables can show it without reading every event.
+export const flagCount = (uid, courseId, testId) => getCountFromServer(query(collection(db, 'proctor'), where('userId', '==', uid), where('courseId', '==', courseId), where('testId', '==', testId), where('kind', 'in', FLAG_KINDS))).then(r => r.data().count);
 export const PROBLEM_TEXT = {
   'left-fullscreen': 'The exam must stay in fullscreen.',
   'second-screen': 'A second screen is connected. Disconnect it or set it to mirror (duplicate) this screen to continue.',
@@ -46,18 +52,22 @@ export const PROBLEM_TEXT = {
 export const COUNTDOWN_TEXT = { 'no-face': 'No face detected.', 'camera-black': 'Your camera is covered or too dark.', 'camera-lost': 'Your camera stopped.' };
 export const WARN_TEXT = { 'multiple-faces': 'More than one face detected.', 'looking-away': 'You are looking away from the screen.' };
 
-const SNAP_EVERY = 60000, MAX_EVENTS = 3000; // the cap is only a safety net for the free Firestore quota; events are one per episode, not per frame
+const SNAP_EVERY = 120000; // a photo every 2 minutes keeps a class inside the free Firestore write quota
+const LIMIT = { proctor: 3000, snaps: 200 }; // per student per test; firestore.rules enforces the same numbers. Events are one per episode, not per frame.
 const COUNTDOWN = 10, TICK = 600, WARN_MIN_MS = 3000;
 
 let s = null; // running session internals
 let submitCurrent = null; // set by the open question page: grades and saves the code on screen
-let state = { testId: null, home: '', problems: [], countdown: null, why: null, warnings: [], submitting: false, ended: null }; // what React reads; replaced, never mutated
+let state = { testId: null, courseId: null, home: '', problems: [], countdown: null, why: null, warnings: [], submitting: false, ended: null }; // what React reads; replaced, never mutated
 const listeners = new Set();
 const set = patch => { state = { ...state, ...patch }; listeners.forEach(f => f()); };
 export const subscribe = f => (listeners.add(f), () => listeners.delete(f));
 export const snapshot = () => state;
 export const active = testId => state.testId === testId;
 export const setSubmitter = f => { submitCurrent = f; };
+let inflight = null; // a student's own submit that is still grading; auto-submit waits for it wherever the student is now
+export const track = p => { inflight = p; p.finally(() => { if (inflight === p) inflight = null; }); };
+export const timeUp = () => autoSubmit('time-up'); // the trainer's time limit ran out
 export const dismissEnded = () => set({ ended: null });
 export const backToFullscreen = () => document.documentElement.requestFullscreen?.().catch(() => {});
 
@@ -71,7 +81,9 @@ const brightness = video => {
   return sum / (d.length / 4);
 };
 
-export async function faceDetector() {
+let detector;
+export const faceDetector = () => (detector ||= loadFaceDetector().catch(e => { detector = null; throw e; })); // loaded once: the setup check and the exam share it
+async function loadFaceDetector() {
   const base = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
   const { FaceDetector, FilesetResolver } = await import(/* @vite-ignore */ `${base}/vision_bundle.mjs`);
   return FaceDetector.createFromOptions(await FilesetResolver.forVisionTasks(`${base}/wasm`), {
@@ -104,22 +116,29 @@ export function inspectFrame(det, video) {
 }
 
 // Call from a click (fullscreen needs a user gesture). Throws a readable error, and leaves nothing running, if any check fails.
-export async function start(uid, testId, home, questionIds = []) {
+export async function start(uid, courseId, testId, home, questionIds = []) { // the same test in another course is a separate exam
   if (active(testId)) return;
   stop();
-  const write = (col, data) => addDoc(collection(db, col), { ...data, at: Date.now() });
   const cleanups = [];
   const cleanup = () => { cleanups.splice(0).reverse().forEach(f => { try { f(); } catch { /* already gone */ } }); };
-  const fail = msg => { write('proctor', { userId: uid, testId, kind: 'start-refused', detail: msg }).catch(() => {}); cleanup(); throw new Error(msg); };
 
-  // an exam that was auto-submitted stays ended
-  const ended = await list(query(collection(db, 'proctor'), where('userId', '==', uid), where('testId', '==', testId), where('kind', '==', 'auto-submitted'))).catch(() => []);
-  if (ended.length) fail('Your exam was ended and submitted automatically. You cannot restart it. Contact your trainer.');
-
-  if (screen.isExtended) fail('A second screen is connected. Disconnect it (or set it to mirror this screen) and try again.');
   await document.documentElement.requestFullscreen?.().catch(() => {}); // first: it must follow the click closely
   cleanups.push(() => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); });
+
+  // Event and photo numbers continue where earlier sessions stopped, so ids never collide. The ids are what let firestore.rules cap them.
+  const idx = { proctor: 0, snaps: 0 };
+  const count = col => getCountFromServer(query(collection(db, col), where('userId', '==', uid), where('courseId', '==', courseId), where('testId', '==', testId))).then(r => r.data().count);
+  try { [idx.proctor, idx.snaps] = await Promise.all([count('proctor'), count('snaps')]); } catch { cleanup(); throw new Error('Could not reach the proctoring records. Check your connection and try again.'); }
+  // critical records (start, auto-submitted) may use the last 10 numbers; everything else stops 10 short
+  const put = (col, data, critical) => { const i = idx[col]++; return i < LIMIT[col] - (critical ? 0 : 10) ? setDoc(doc(db, col, `${uid}_${courseId}_${testId}_${i}`), { ...data, userId: uid, courseId, testId, at: Date.now() }) : Promise.resolve(); };
+  const fail = msg => { put('proctor', { kind: 'start-refused', detail: msg }).catch(() => {}); cleanup(); throw new Error(msg); };
+
   if (!document.fullscreenElement) fail('Fullscreen is required for this test. Allow it and try again.');
+  // an exam that was auto-submitted stays ended; if this cannot be checked, do not start
+  let ended;
+  try { ended = await list(query(collection(db, 'proctor'), where('userId', '==', uid), where('courseId', '==', courseId), where('testId', '==', testId), where('kind', '==', 'auto-submitted'))); } catch { fail('Could not check your exam status. Check your connection and try again.'); }
+  if (ended.length) fail('Your exam was ended and submitted automatically. You cannot restart it. Contact your trainer.');
+  if (screen.isExtended) fail('A second screen is connected. Disconnect it (or set it to mirror this screen) and try again.');
 
   const devs = (await navigator.mediaDevices?.enumerateDevices?.().catch(() => [])) || [];
   if (!devs.some(d => d.kind === 'videoinput')) fail('No camera found. This test needs a working camera.');
@@ -144,25 +163,23 @@ export async function start(uid, testId, home, questionIds = []) {
   // exactly one face must be in view to begin; if the face model cannot load the exam cannot be proctored, so it does not start
   let det;
   try { det = await faceDetector(); } catch { fail('The face check could not load. Check your internet connection and try again.'); }
-  cleanups.push(() => det.close?.());
   let seen = 0;
   for (let i = 0; i < 6 && !seen; i++) { await new Promise(r => setTimeout(r, 500)); seen = facesIn(det, video).length; }
   if (seen === 0) fail('We cannot see your face. Sit facing the camera in good light and try again.');
   if (seen > 1) fail('More than one face is visible. Only you may be in view.');
 
   // the first write proves the rules are deployed; if it fails the trainer would get no evidence, so do not start
-  const key = `tk-proctor-${uid}-${testId}`;
+  const key = `tk-proctor-${uid}-${courseId}-${testId}`;
   let restarted = false;
   try { restarted = !!sessionStorage.getItem(key); sessionStorage.setItem(key, '1'); } catch { /* private mode */ }
-  try { await write('proctor', { userId: uid, testId, kind: restarted ? 'restart' : 'start' }); } catch { fail('Proctoring could not save its records, so the test cannot start. Tell your trainer (Firestore rules may not be deployed).'); }
+  try { await put('proctor', { kind: restarted ? 'restart' : 'start' }, true); } catch { fail('Proctoring could not save its records, so the test cannot start. Tell your trainer (Firestore rules may not be deployed).'); }
 
-  let n = 0;
-  const log = (kind, detail) => { if (n++ < MAX_EVENTS) write('proctor', { userId: uid, testId, kind, ...(detail ? { detail } : {}) }).catch(() => {}); }; // after start, a failed log must not break the test
+  const log = (kind, detail) => put('proctor', { kind, ...(detail ? { detail } : {}) }).catch(() => {}); // after start, a failed log must not break the test
   const snap = reason => {
     if (video.readyState < 2) return;
     const c = Object.assign(document.createElement('canvas'), { width: 240, height: 180 });
     c.getContext('2d').drawImage(video, 0, 0, 240, 180);
-    write('snaps', { userId: uid, testId, img: c.toDataURL('image/jpeg', 0.5), ...(reason ? { reason } : {}) }).catch(() => {});
+    put('snaps', { img: c.toDataURL('image/jpeg', 0.5), ...(reason ? { reason } : {}) }).catch(() => {});
   };
   const on = (t, ev, f) => { t.addEventListener(ev, f); cleanups.push(() => t.removeEventListener(ev, f)); };
   const every = (f, ms) => { const id = setInterval(f, ms); cleanups.push(() => clearInterval(id)); };
@@ -213,7 +230,7 @@ export async function start(uid, testId, home, questionIds = []) {
       many = faces.length > 1 ? many + 1 : 0;
       away = faces.length === 1 && yaw(faces[0]) > 0.6 ? away + 1 : 0;
     }
-    const cause = trackLost ? 'camera-lost' : covered >= 2 ? 'camera-black' : none >= 2 ? 'no-face' : null;
+    const cause = pickCause({ trackLost, covered, none });
     if (cause) startCountdown(cause); else if (ready) cancelCountdown();
     warn('multiple-faces', many >= 2);
     warn('looking-away', away >= 2);
@@ -225,29 +242,29 @@ export async function start(uid, testId, home, questionIds = []) {
     if (left <= 0) autoSubmit(why); else if (left !== state.countdown) set({ countdown: left });
   }, 250);
 
-  s = { cleanup, key, log, uid, testId, questionIds, ending: false };
-  set({ testId, home, problems: [], countdown: null, why: null, warnings: [], submitting: false, ended: null });
+  s = { cleanup, key, log, put, uid, courseId, testId, questionIds, ending: false };
+  set({ testId, courseId, home, problems: [], countdown: null, why: null, warnings: [], submitting: false, ended: null });
 }
 
 // Ends the exam: saves what is on screen, gives every unanswered question an empty zero-score submission, records it, and leaves.
 async function autoSubmit(reason) {
   if (!s || s.ending) return;
   s.ending = true;
-  const { uid, testId, questionIds, log } = s;
+  const { uid, courseId, testId, questionIds, log, put } = s;
   set({ countdown: null, submitting: true });
   log('auto-submit-started', reason);
-  try { await submitCurrent?.(); } catch { /* the empty-submission step below still runs */ }
+  try { await (inflight || submitCurrent?.()); } catch { /* the empty-submission step below still runs */ }
   for (const qid of questionIds) {
     try {
-      const ref = doc(db, 'submissions', `${uid}_${testId}_${qid}`);
+      const ref = doc(db, 'submissions', `${uid}_${courseId}_${testId}_${qid}`);
       if ((await getDoc(ref)).exists()) continue;
       const q = await getDoc(doc(db, 'questions', qid));
-      if (q.exists()) await setDoc(ref, { userId: uid, testId, questionId: qid, code: '', passed: 0, total: q.data().tests.length, auto: true, at: serverTimestamp() });
+      if (q.exists()) await setDoc(ref, { userId: uid, courseId, testId, questionId: qid, code: '', passed: 0, total: q.data().tests.length, auto: true, at: serverTimestamp() });
     } catch { /* one failed question must not stop the rest */ }
   }
-  await addDoc(collection(db, 'proctor'), { userId: uid, testId, kind: 'auto-submitted', detail: reason, at: Date.now() }).catch(() => {}); // awaited: it is what keeps the exam ended
+  await put('proctor', { kind: 'auto-submitted', detail: reason }, true).catch(() => {}); // awaited: it is what keeps the exam ended
   stop(false);
-  set({ ended: `${COUNTDOWN_TEXT[reason] || 'A problem with your camera'} The 10 second countdown ran out, so your exam was submitted automatically. Your trainer can see what happened.` });
+  set({ ended: reason === 'time-up' ? 'Your time is up, so your exam was submitted automatically.' : `${COUNTDOWN_TEXT[reason] || 'A problem with your camera'} The 10 second countdown ran out, so your exam was submitted automatically. Your trainer can see what happened.` });
   location.hash = '#/';
 }
 
@@ -258,5 +275,5 @@ export function stop(finished) {
   s.cleanup();
   if (finished) { try { sessionStorage.removeItem(s.key); } catch { /* ignore */ } }
   s = null;
-  set({ testId: null, home: '', problems: [], countdown: null, why: null, warnings: [], submitting: false });
+  set({ testId: null, courseId: null, home: '', problems: [], countdown: null, why: null, warnings: [], submitting: false });
 }

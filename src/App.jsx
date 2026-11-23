@@ -6,7 +6,8 @@ import Landing from './pages/public/Landing.jsx';
 import Login from './pages/public/Login.jsx';
 import { Help, Institutes, Legal, Pricing } from './pages/public/Public.jsx';
 import { AdminCourses, AdminOverview, AdminPayments, AdminUsers } from './pages/staff/Admin.jsx';
-import { TrainerCourses, TrainerResults, Questions, TestsPage } from './pages/staff/Trainer.jsx';
+import TestResults from './pages/staff/TestResults.jsx';
+import { TrainerCourses, TrainerResults, Questions, QuestionDetail, NewQuestion, TestsPage, NewTest } from './pages/staff/Trainer.jsx';
 import CourseDetail from './pages/staff/CourseDetail.jsx';
 import { Dashboard } from './pages/student/Dashboard.jsx';
 import { Courses, CourseView, TestView } from './pages/student/Courses.jsx';
@@ -44,6 +45,8 @@ export default function App() {
       <Route path="/users" element={page('Users', <AdminUsers />)} />
       <Route path="/payments" element={page('Payments', <AdminPayments />)} />
       <Route path="/course/:id" element={page('Course', <CourseDetail />)} />
+      <Route path="/questions/:id" element={page('Question', <QuestionDetail />)} />
+      <Route path="/questions/:id/edit" element={page('Edit question', <NewQuestion />)} />
       <Route path="/search" element={page('Search', <SearchPage />)} />
       <Route path="/settings" element={page('Settings', <Settings />)} />
       {home}
@@ -51,10 +54,16 @@ export default function App() {
   );
   else if (me.role === 'trainer') body = (
     <Routes>
-      <Route path="/" element={page('My courses', <TrainerCourses />)} />
+      <Route path="/" element={page('Courses', <TrainerCourses />)} />
       <Route path="/results" element={page('Results', <TrainerResults />)} />
+      <Route path="/results/:courseId/:testId" element={page('Test results', <TestResults />)} />
       <Route path="/questions" element={page('Question bank', <Questions />)} />
+      <Route path="/questions/new" element={page('New question', <NewQuestion />)} />
+      <Route path="/questions/:id" element={page('Question', <QuestionDetail />)} />
+      <Route path="/questions/:id/edit" element={page('Edit question', <NewQuestion />)} />
       <Route path="/tests" element={page('Tests', <TestsPage />)} />
+      <Route path="/tests/new" element={page('New test', <NewTest />)} />
+      <Route path="/tests/:id/edit" element={page('Edit test', <NewTest />)} />
       <Route path="/course/:id" element={page('Course', <CourseDetail />)} />
       <Route path="/search" element={page('Search', <SearchPage />)} />
       <Route path="/settings" element={page('Settings', <Settings />)} />
@@ -67,7 +76,7 @@ export default function App() {
       <Route path="/courses" element={page('Courses', <Courses />)} />
       <Route path="/course/:id" element={page('Course', <CourseView />)} />
       <Route path="/test/:courseId/:testId" element={page('Test', <TestView />)} />
-      <Route path="/solve/:testId/:qid" element={page('Question', <Solve />)} />
+      <Route path="/solve/:courseId/:testId/:qid" element={page('Question', <Solve />)} />
       <Route path="/playground" element={page('Playground', <Playground />)} />
       <Route path="/leaderboard" element={page('Leaderboard', <Leaderboard />)} />
       <Route path="/profile" element={page('Your profile', <Profile />)} />

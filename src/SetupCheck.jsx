@@ -15,7 +15,7 @@ export default function SetupCheck({ onReady, stopRef }) {
   const begin = async () => {
     setPhase('loading'); setErr('');
     let stream, det, id;
-    const stop = () => { clearInterval(id); stream?.getTracks().forEach(t => t.stop()); det?.close?.(); stopRef.current = null; };
+    const stop = () => { clearInterval(id); stream?.getTracks().forEach(t => t.stop()); stopRef.current = null; };
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: true });
       stopRef.current = stop;

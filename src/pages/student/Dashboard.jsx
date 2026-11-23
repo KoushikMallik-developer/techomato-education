@@ -1,22 +1,22 @@
 import { Link } from 'react-router-dom';
+import { inCourse } from '../../score.js';
 import { collection, doc, getCountFromServer, getDoc, query, where } from 'firebase/firestore';
 import { db, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { dayKey } from '../../score.js';
-import { dailyOf } from './Practice.jsx';
+import { dailyOf, dayKey } from '../../score.js';
 import { Bar, StreakDots, Empty, Icon, Loading, useLoad } from '../../ui.jsx';
-import { get, mySubs, myCourses } from './data.js';
+import { examQuestionIds, get, isPublic, mySubs, myCourses } from './data.js';
 
 /* ---------- dashboard ---------- */
 export function Dashboard() {
   const me = useMe();
   const [d] = useLoad(async () => {
     const courses = await myCourses(me.uid);
-    const tests = (await Promise.all([...new Set(courses.flatMap(c => c.testIds))].map(t => get('tests', t)))).filter(Boolean);
+    const tests = (await Promise.all([...new Set(courses.flatMap(c => c.testIds))].map(t => get('tests', t)))).filter(t => t && !t.draft);
     const mine = (await getDoc(doc(db, 'leaderboard', me.uid))).data() || { xp: 0, streak: 0, lastDay: '' };
     const count = async w => (await getCountFromServer(w ? query(collection(db, 'leaderboard'), w) : collection(db, 'leaderboard'))).data().count; // count queries read ~1 doc per 1000, not one per student
     const rank = (await count(where('xp', '>', mine.xp))) + 1;
-    return { rank, of: Math.max(rank, await count()), courses, tests, subs: await mySubs(me.uid), mine, daily: dailyOf(await questions()) };
+    return { rank, of: Math.max(rank, await count()), courses, tests, subs: await mySubs(me.uid), mine, daily: dailyOf((await questions()).filter(isPublic), await examQuestionIds()) };
   });
   if (!d) return <Loading />;
   const passed = d.subs.reduce((n, s) => n + s.passed, 0);
@@ -63,7 +63,7 @@ export function Dashboard() {
       {cards.length === 0 ? <Empty title="No tests yet" body="Tests your trainer assigns to your courses show up here." /> : (
         <div className="grid g3">
           {cards.map(({ c, t }) => {
-            const done = d.subs.filter(s => s.testId === t.id).length;
+            const done = d.subs.filter(s => s.testId === t.id && inCourse(s, c.id)).length;
             return (
               <article key={c.id + t.id} className="card stack" style={{ gap: 12 }}>
                 <div className="between"><span className="small muted">{c.title}</span><span className={`chip ${done === t.questionIds.length ? 'chip-pass' : 'chip-accent'}`}>{done === t.questionIds.length ? 'Attempted' : 'Open'}</span></div>

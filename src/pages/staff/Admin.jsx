@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addDoc, collection, doc, getCountFromServer, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { createLogin, db, list } from '../../firebase.js';
+import { createLogin, db, freeCode, list } from '../../firebase.js';
 import { Avatar, Btn, CourseGrid, Empty, Field, Icon, Loading, attempt, notify, plural, useBusy, useLoad } from '../../ui.jsx';
 
 export function AdminCourses() {
@@ -16,7 +16,7 @@ export function AdminCourses() {
     run(async () => {
       const t = trainers.find(x => x.id === f.trainerId);
       if (!t) throw new Error('Pick a trainer (create one in Users first)');
-      await addDoc(collection(db, 'courses'), { title: f.title, description: f.description, trainerId: t.id, trainerName: t.name, students: [], testIds: [], createdAt: serverTimestamp() });
+      await addDoc(collection(db, 'courses'), { code: await freeCode('courses', 'C'), title: f.title, description: f.description, trainerId: t.id, trainerName: t.name, students: [], testIds: [], createdAt: serverTimestamp() });
       setF({ title: '', description: '', trainerId: '' });
       setOpen(false);
       notify('Course added');

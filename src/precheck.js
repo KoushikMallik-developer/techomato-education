@@ -2,6 +2,10 @@
 export const DARK = 25; // mean brightness (0-255) below this is a covered or dead camera
 export const LIGHT_MIN = 50, LIGHT_MAX = 225, FACE_LIGHT_MIN = 45; // the picture, and the face inside it, must sit in this range
 
+// Which problem starts the 10 second auto-submit countdown. Order matters: a stopped camera beats a covered one beats a missing face.
+// covered/none are counts of bad readings in a row; two in a row (about 1.2 s) are needed so one dropped frame never alarms.
+export const pickCause = ({ trackLost, covered, none }) => (trackLost ? 'camera-lost' : covered >= 2 ? 'camera-black' : none >= 2 ? 'no-face' : null);
+
 // f: {ready, mean, faces, size, cx, faceLuma, turned}  size/cx are fractions of the frame width; env: {mic, oneScreen}
 // Returns one line per requirement: {key, ok, text}. The student may start only when every line is ok.
 export function judge(f, env) {

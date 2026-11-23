@@ -59,7 +59,7 @@ export function ProctorOverlay() {
 }
 
 // The rules and the Start button for a proctored test. Used on the test page, and on a question opened by direct link.
-export function ProctorStart({ testId, questionIds, onStarted, onBack }) {
+export function ProctorStart({ courseId, testId, questionIds, onStarted, onBack, before }) { // before: runs first, e.g. starts the test timer
   const me = useMe();
   const { pathname } = useLocation();
   const [busy, run] = useBusy();
@@ -68,12 +68,12 @@ export function ProctorStart({ testId, questionIds, onStarted, onBack }) {
   const stopRef = useRef(null);
   const go = () => run(async () => {
     stopRef.current?.(); // the exam opens its own camera, so release the preview first
-    try { await start(me.uid, testId, pathname, questionIds); onStarted?.(); } catch (e) { setReady(false); setRound(r => r + 1); throw e; }
+    try { await before?.(); await start(me.uid, courseId, testId, pathname, questionIds); onStarted?.(); } catch (e) { setReady(false); setRound(r => r + 1); throw e; }
   });
   return (
     <div className="card stack" style={{ gap: 16, maxWidth: 700 }}>
       <h2 className="h3" style={{ fontSize: 24 }}>This test is proctored</h2>
-      <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+      <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7, listStyle: 'disc' }}>
         <li>It runs in fullscreen with no menu. You can leave only after you submit every question.</li>
         <li>Your face must stay in view. If no face is detected, or the camera is covered, a 10 second countdown starts and the exam is auto-submitted when it ends.</li>
         <li>More than one face, or looking away, shows an instant warning.</li>

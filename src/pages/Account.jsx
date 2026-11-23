@@ -4,7 +4,9 @@ import { sendPasswordResetEmail, signOut, updatePassword } from 'firebase/auth';
 import { collection, doc, query, updateDoc, where } from 'firebase/firestore';
 import { auth, db, list, questions } from '../firebase.js';
 import { useMe } from '../auth.jsx';
-import { Btn, Empty, ENV_LABEL, Field, Icon, Loading, Logo, attempt, notify, useBusy, useLoad } from '../ui.jsx';
+import { openQuestions } from './student/data.js';
+import { courseCode, testCode, typeLabel } from '../schedule.js';
+import { Btn, Empty, Field, Icon, Loading, Logo, attempt, notify, useBusy, useLoad } from '../ui.jsx';
 
 /* ---------- notifications ---------- */
 const ago = t => { const m = Math.max(1, Math.round((Date.now() - t) / 60000)); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
@@ -80,29 +82,38 @@ export function SearchPage() {
   const [text, setText] = useState(sp.get('q') || '');
   const [d] = useLoad(async () => ({
     courses: await list(me.role === 'student' ? query(collection(db, 'courses'), where('students', 'array-contains', me.uid)) : me.role === 'trainer' ? query(collection(db, 'courses'), where('trainerId', '==', me.uid)) : collection(db, 'courses')),
-    qs: await questions(),
+    qs: me.role === 'student' ? await openQuestions() : await questions(), // students must not find exam questions here
+    tests: await list(collection(db, 'tests')),
+    all: await list(collection(db, 'courses')), // to find which course a test belongs to
   }));
   const has = s => s.toLowerCase().includes(q);
   const hit = d && q.length >= 2 && {
-    courses: d.courses.filter(c => has(`${c.title} ${c.description}`)),
-    qs: d.qs.filter(x => has(`${x.title} ${x.topic || ''} ${x.statement}`)),
+    courses: d.courses.filter(c => has(`${c.title} ${c.description} ${courseCode(c)} ${courseCode(c).slice(2)}`)),
+    qs: d.qs.filter(x => has(`${x.title} ${x.topic || ''} ${x.statement} ${x.constraints || ''}`)),
+    tests: d.tests.filter(x => !x.draft || x.authorId === me.uid).filter(x => has(`${x.title} ${testCode(x)} ${testCode(x).slice(2)}`)).map(x => {
+      const own = x.authorId === me.uid, mine = d.courses.find(c => c.testIds?.includes(x.id)), any = d.all.find(c => c.testIds?.includes(x.id));
+      const to = own && me.role === 'trainer' ? `/tests/${x.id}/edit` : mine && me.role === 'student' ? `/test/${mine.id}/${x.id}` : any ? `/course/${any.id}` : null;
+      return { ...x, to };
+    }).filter(x => x.to), // a test that is not in any course cannot be opened by anyone else
   };
   return (
     <div className="stack" style={{ gap: 18 }}>
       <form role="search" className="row" onSubmit={e => { e.preventDefault(); setSp({ q: text }); }}>
         <label className="sr" htmlFor="sq">Search</label>
-        <input id="sq" className="input" type="search" autoFocus placeholder="Search courses and questions…" value={text} onChange={e => setText(e.target.value)} style={{ minHeight: 54, fontSize: 17 }} />
+        <input id="sq" className="input" type="search" autoFocus placeholder="Search courses, questions and tests (name or ID)…" value={text} onChange={e => setText(e.target.value)} style={{ minHeight: 54, fontSize: 17 }} />
         <button className="btn btn-ink btn-lg" type="submit">Search</button>
       </form>
       {!d ? <Loading /> : !hit ? <Empty title="Search everything" body="Find courses and practice questions. Try a topic like “strings”." /> : (
-        hit.courses.length + hit.qs.length === 0 ? <Empty title={`No results for “${sp.get('q')}”`} body="Check the spelling, or try a broader word." /> : (
+        hit.courses.length + hit.qs.length + hit.tests.length === 0 ? <Empty title={`No results for “${sp.get('q')}”`} body="Check the spelling, or try a broader word." /> : (
           <>
             {hit.qs.length > 0 && <Section title="Questions">{hit.qs.map(x => (
-              <Link key={x.id} to={me.role === 'student' ? `/solve/practice/${x.id}` : '/questions'} className="rowlink">
-                <b>{x.title}</b><span className="row small"><span className="muted">{x.topic}</span><span className="chip">{ENV_LABEL[x.env]}</span></span>
+              <Link key={x.id} to={me.role === 'student' ? `/solve/practice/practice/${x.id}` : '/questions'} className="rowlink">
+                <b>{x.title}</b><span className="row small"><span className="muted">{x.topic}</span><span className="chip">{typeLabel(x)}</span></span>
               </Link>))}</Section>}
+            {hit.tests.length > 0 && <Section title="Tests">{hit.tests.map(x => (
+              <Link key={x.id} to={x.to} className="rowlink"><b>{x.title}</b><span className="row small"><span className="mono muted">{testCode(x)}</span>{x.authorName && <span className="muted">{x.authorName}</span>}</span></Link>))}</Section>}
             {hit.courses.length > 0 && <Section title="Courses">{hit.courses.map(c => (
-              <Link key={c.id} to={`/course/${c.id}`} className="rowlink"><b>{c.title}</b><span className="small muted">{c.trainerName}</span></Link>))}</Section>}
+              <Link key={c.id} to={`/course/${c.id}`} className="rowlink"><b>{c.title}</b><span className="row small"><span className="mono muted">{courseCode(c)}</span><span className="muted">{c.trainerName}</span></span></Link>))}</Section>}
           </>
         )
       )}

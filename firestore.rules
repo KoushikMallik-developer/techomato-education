@@ -15,25 +15,33 @@ service cloud.firestore {
     // Bootstrap: the first admin is created by hand in the console (see README); it can't be self-created.
 
     match /courses/{id} {
-      allow read: if request.auth != null && (role() == 'admin'
-        || resource.data.trainerId == request.auth.uid
-        || request.auth.uid in resource.data.students);
+      // any signed-in user can browse the course catalog (title, trainer, student ids); the tests' results stay private
+      allow read: if request.auth != null;
       allow create, delete: if request.auth != null && role() == 'admin';
-      // admin enrolls students; the course's trainer assigns tests
+      // admin enrolls students; the course's trainer assigns tests and marks the course completed
       allow update: if request.auth != null && (role() == 'admin'
         || (resource.data.trainerId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['testIds'])));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['testIds', 'completed'])));
     }
 
     match /questions/{id} {
       allow read: if request.auth != null;
+      // the author or an admin can edit the content (never the author)
+      allow update: if request.auth != null && (resource.data.authorId == request.auth.uid || role() == 'admin')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'statement', 'constraints', 'env', 'starter', 'diff', 'topic', 'tests', 'public', 'updatedAt']);
       allow create: if request.auth != null && role() == 'trainer' && request.resource.data.authorId == request.auth.uid;
       allow delete: if request.auth != null && (role() == 'admin' || resource.data.authorId == request.auth.uid);
     }
     match /tests/{id} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && role() == 'trainer' && request.resource.data.authorId == request.auth.uid;
-      allow delete: if request.auth != null && (role() == 'admin' || resource.data.authorId == request.auth.uid);
+      // an author cannot delete a test while it is open (between its publish and end times); close it first
+      allow delete: if request.auth != null && (role() == 'admin' || (resource.data.authorId == request.auth.uid
+        && !(resource.data.get('draft', false) == false && 'endAt' in resource.data && resource.data.publishAt <= request.time.toMillis() && request.time.toMillis() <= resource.data.endAt)));
+      // the author can edit the title, questions and schedule; after the exam they can also switch proctoring off, which releases its questions to practice
+      allow update: if request.auth != null && (role() == 'admin' || resource.data.authorId == request.auth.uid)
+        && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['proctored']) && request.resource.data.proctored == false)
+          || (resource.data.authorId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'questionIds', 'publishAt', 'endAt', 'durationMin', 'draft', 'updatedAt', 'languages'])));
     }
 
     // Public XP/streak board. Students write only their own entry. shortcut: client-written, so XP can be faked.
@@ -50,15 +58,23 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
 
-    // Proctoring evidence for tests marked proctored: students write their own, staff read. Webcam photos are small JPEG data URLs (free plan has no Storage).
+    // Proctoring evidence for tests marked proctored. Students write their own; staff read all; a student reads their own (to know an exam was auto-submitted).
+    // Document ids are uid_courseId_testId_n with n capped, so one student cannot flood the free write quota. Webcam photos are small JPEG data URLs (the free plan has no Storage).
     match /proctor/{id} {
-      allow read: if staff() || (request.auth != null && resource.data.userId == request.auth.uid); // students read their own, to know an exam was auto-submitted
-      allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid;
+      allow read: if staff() || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid
+        && id.matches(request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId + '_[0-9]+')
+        && int(id.split('_')[3]) < 3000
+        && get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.proctored == true
+        && request.resource.data.kind.size() < 40 && request.resource.data.get('detail', '').size() < 300;
     }
     match /snaps/{id} {
-      allow read: if staff();
+      allow read: if staff() || (request.auth != null && resource.data.userId == request.auth.uid);
       allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid
-        && request.resource.data.img.size() < 60000;
+        && id.matches(request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId + '_[0-9]+')
+        && int(id.split('_')[3]) < 200
+        && get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.proctored == true
+        && request.resource.data.img.size() < 60000 && request.resource.data.get('reason', '').size() < 40;
     }
 
     // Manual payment ledger, written when an admin enrolls a student.
@@ -66,15 +82,47 @@ service cloud.firestore {
       allow read, write: if request.auth != null && role() == 'admin';
     }
 
-    // One doc per (student, test, question). Free students may only create it (one attempt); subscribers may overwrite it.
+    // One doc per (student, course, test) for timed tests. The deadline is fixed when it is created; afterwards the student only writes the heartbeat.
+    match /attempts/{aid} {
+      allow read: if request.auth != null && (staff() || resource.data.userId == request.auth.uid);
+      allow create: if request.auth != null && role() == 'student'
+        && request.resource.data.userId == request.auth.uid
+        && aid == request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId
+        && inCourseOf(request.resource.data)
+        && get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.durationMin is number
+        && request.resource.data.deadline == request.resource.data.startedAt + get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.durationMin * 60000
+        && request.time.toMillis() >= get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.publishAt
+        && request.time.toMillis() <= get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.endAt
+        && request.resource.data.startedAt > request.time.toMillis() - 120000 && request.resource.data.startedAt < request.time.toMillis() + 120000;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['beat', 'left']);
+    }
+
+    // The student is enrolled in the course and the course has the test.
+    function inCourseOf(d) {
+      let c = get(/databases/$(database)/documents/courses/$(d.courseId)).data;
+      return request.auth.uid in c.students && d.testId in c.testIds;
+    }
+
+    // Submissions to a timed test are refused after the attempt's deadline (30 s of grace for the auto-submit).
+    function inTime(d) {
+      return d.testId == 'practice'
+        || !('durationMin' in get(/databases/$(database)/documents/tests/$(d.testId)).data)
+        || (exists(/databases/$(database)/documents/attempts/$(request.auth.uid + '_' + d.courseId + '_' + d.testId))
+            && request.time.toMillis() <= get(/databases/$(database)/documents/attempts/$(request.auth.uid + '_' + d.courseId + '_' + d.testId)).data.deadline + 30000);
+    }
+
+    // One doc per (student, course, test, question): the same test in two courses has separate results. Free students may only create it (one attempt); subscribers may overwrite it.
     match /submissions/{sid} {
       allow read: if request.auth != null && (staff() || resource.data.userId == request.auth.uid);
       allow create: if request.auth != null && role() == 'student'
         && request.resource.data.userId == request.auth.uid
-        && sid == request.auth.uid + '_' + request.resource.data.testId + '_' + request.resource.data.questionId
-        && (request.resource.data.testId == 'practice' || exists(/databases/$(database)/documents/tests/$(request.resource.data.testId)));
+        && sid == request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId + '_' + request.resource.data.questionId
+        && ((request.resource.data.testId == 'practice' && request.resource.data.courseId == 'practice')
+            || (exists(/databases/$(database)/documents/tests/$(request.resource.data.testId)) && inCourseOf(request.resource.data)))
+        && inTime(request.resource.data);
       allow update: if request.auth != null && role() == 'student' && me().subscribed == true
-        && request.resource.data.userId == request.auth.uid;
+        && request.resource.data.userId == request.auth.uid && inTime(request.resource.data);
     }
   }
 }

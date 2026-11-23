@@ -4,15 +4,16 @@ import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, query, where } from 'firebase/firestore';
 import { auth, db, list, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { dayIndex } from '../../score.js';
+import { dailyOf } from '../../score.js';
 import { NAV } from '../../Shell.jsx';
-import { CodeBlock, ENV_LABEL, Empty, Icon, Loading, Tabs, useLoad } from '../../ui.jsx';
+import { examQuestionIds, isPublic, openQuestions } from './data.js';
+import { langOfSub, typeLabel } from '../../schedule.js';
+import { CodeBlock, Empty, Icon, Loading, Tabs, useLoad } from '../../ui.jsx';
 
 const mySubs = uid => list(query(collection(db, 'submissions'), where('userId', '==', uid)));
 export const solvedIds = subs => new Set(subs.filter(s => s.passed === s.total).map(s => s.questionId));
 
 /* The question of the day: the same for everyone, changes at midnight. shortcut: picks by day number, so adding questions reshuffles it. */
-export const dailyOf = qs => (qs.length ? [...qs].sort((a, b) => a.id.localeCompare(b.id))[dayIndex(new Date()) % qs.length] : null);
 
 export function useCountdown() {
   const [now, setNow] = useState(Date.now());
@@ -29,12 +30,12 @@ const Seg = ({ value, onChange, options }) => (
 
 export function Problems() {
   const me = useMe();
-  const [d] = useLoad(async () => ({ qs: await questions(), subs: await mySubs(me.uid) }));
+  const [d] = useLoad(async () => ({ qs: await openQuestions(), subs: await mySubs(me.uid) }));
   const [f, setF] = useState({ text: '', env: 'all', diff: 'all', status: 'all' });
   if (!d) return <Loading />;
   const done = solvedIds(d.subs);
   const rows = d.qs.filter(q =>
-    (f.env === 'all' || q.env === f.env) && (f.diff === 'all' || q.diff === f.diff) &&
+    (f.env === 'all' || (f.env === 'web') === (q.env === 'web')) && (f.diff === 'all' || q.diff === f.diff) &&
     (f.status === 'all' || (f.status === 'solved') === done.has(q.id)) &&
     `${q.title} ${q.topic || ''}`.toLowerCase().includes(f.text.toLowerCase()));
   return (
@@ -42,8 +43,8 @@ export function Problems() {
       <p className="muted" style={{ margin: '-14px 0 0' }}>Practice on any question in the bank. The free plan gives one graded submission per question.</p>
       <div className="stack" style={{ gap: 10 }}>
         <input className="input" type="search" placeholder="Search by title or topic" aria-label="Search problems" value={f.text} onChange={e => setF({ ...f, text: e.target.value })} />
-        <div className="row" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <Seg value={f.env} onChange={env => setF({ ...f, env })} options={[['all', 'All languages'], ...Object.entries(ENV_LABEL)]} />
+        <div className="filters">
+          <Seg value={f.env} onChange={env => setF({ ...f, env })} options={[['all', 'All types'], ['code', 'Programming'], ['web', 'Web page']]} />
           <Seg value={f.diff} onChange={diff => setF({ ...f, diff })} options={[['all', 'Any level'], ['Easy', 'Easy'], ['Medium', 'Medium'], ['Hard', 'Hard']]} />
           <Seg value={f.status} onChange={status => setF({ ...f, status })} options={[['all', 'All'], ['todo', 'To do'], ['solved', 'Solved']]} />
         </div>
@@ -51,14 +52,15 @@ export function Problems() {
       {rows.length === 0 ? <Empty title="No problems match" body="Try clearing a filter." /> : (
         <div className="card" style={{ padding: 6 }}>
           {rows.map(q => (
-            <Link key={q.id} to={`/solve/practice/${q.id}`} className="rowlink">
+            <Link key={q.id} to={`/solve/practice/practice/${q.id}`} className="rowlink">
               <span className="row">
-                {done.has(q.id) ? <Icon name="check" size={18} stroke={2.4} color="var(--pass-strong)" /> : <span style={{ width: 18 }} />}
+                {done.has(q.id) ? <Icon name="check" size={18} stroke={2.4} color="var(--pass-strong)" /> : <span className="ring" aria-hidden="true" />}
                 <span style={{ fontWeight: 600 }}>{q.title}</span>
               </span>
               <span className="row small">
-                <span className="muted">{q.topic}</span><span className="chip">{ENV_LABEL[q.env]}</span>
+                <span className="muted">{q.topic}</span><span className="chip">{typeLabel(q)}</span>
                 {q.diff && <span className={`diff-${q.diff}`} style={{ fontWeight: 700, width: 56, textAlign: 'right' }}>{q.diff}</span>}
+                <span className="go" aria-hidden="true">›</span>
               </span>
             </Link>
           ))}
@@ -73,7 +75,7 @@ export function Contest() {
   const me = useMe();
   const left = useCountdown();
   const [d] = useLoad(async () => {
-    const q = dailyOf(await questions());
+    const q = dailyOf((await questions()).filter(isPublic), await examQuestionIds());
     const all = q ? await mySubs(me.uid).then(a => a.filter(s => s.questionId === q.id)) : []; // any attempt counts: in a test or in practice
     return { q, sub: all.sort((a, b) => b.passed - a.passed)[0] || null };
   });
@@ -85,9 +87,9 @@ export function Contest() {
       <article className="card stack" style={{ gap: 14, background: 'var(--accent)', color: 'var(--on-accent)', border: 0, padding: 30 }}>
         <div className="between small"><span>Daily contest</span><span className="mono">{left} left</span></div>
         <h2 className="h2" style={{ fontSize: 40 }}>{q.title}</h2>
-        <div className="small">{[q.diff, q.topic, ENV_LABEL[q.env]].filter(Boolean).join(', ')}, +{10 * q.tests.length} XP</div>
+        <div className="small">{[q.diff, q.topic, typeLabel(q)].filter(Boolean).join(', ')}, +{10 * q.tests.length} XP</div>
         <div className="small" style={{ fontWeight: 600 }}>{solved ? 'Solved. Well done!' : sub ? `Last result: ${sub.passed}/${sub.total} test cases` : 'Not attempted yet'}</div>
-        <Link to={`/solve/practice/${q.id}`} className="btn btn-white" style={{ alignSelf: 'flex-start' }}>{sub ? 'View your solution' : 'Solve now'}</Link>
+        <Link to={`/solve/practice/practice/${q.id}`} className="btn btn-white" style={{ alignSelf: 'flex-start' }}>{sub ? 'View your solution' : 'Solve now'}</Link>
       </article>
       <div className="card stack" style={{ gap: 8 }}>
         <h3 className="h3" style={{ fontSize: 20 }}>How it works</h3>
@@ -114,7 +116,7 @@ export function Achievements() {
   if (!d) return <Loading />;
   const done = solvedIds(d.subs);
   const s = { subs: d.subs, solved: done.size, xp: d.lb.xp || 0, streak: d.lb.streak || 0, subscribed: !!me.subscribed,
-    envs: new Set(d.qs.filter(q => done.has(q.id)).map(q => q.env)).size };
+    envs: new Set(d.subs.filter(x => done.has(x.questionId)).map(x => { const q = d.qs.find(y => y.id === x.questionId); return q ? (q.env === 'web' ? 'web' : langOfSub(x, q)) : null; }).filter(Boolean)).size };
   const got = BADGES.filter(b => b[3](s)).length;
   return (
     <div className="stack" style={{ gap: 16 }}>

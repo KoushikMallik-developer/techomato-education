@@ -10,7 +10,7 @@ import { Avatar, DemoNote, Icon, Logo } from './ui.jsx';
 // group -> [label, path, icon, extra path prefixes that also highlight the item]
 export const NAV = {
   admin: [['Manage', [['Overview', '/', 'chart'], ['Courses', '/courses', 'book', ['/course/']], ['Users', '/users', 'users'], ['Payments', '/payments', 'doc']]], ['Account', [['Settings', '/settings', 'gear']]]],
-  trainer: [['Teach', [['My courses', '/', 'book', ['/course/']], ['Results', '/results', 'trophy'], ['Question bank', '/questions', 'code'], ['Tests', '/tests', 'clip']]], ['Account', [['Settings', '/settings', 'gear']]]],
+  trainer: [['Teach', [['Courses', '/', 'book', ['/course/']], ['Results', '/results', 'trophy'], ['Question bank', '/questions', 'code'], ['Tests', '/tests', 'clip']]], ['Account', [['Settings', '/settings', 'gear']]]],
   student: [
     ['Learning', [['Dashboard', '/', 'home'], ['Courses', '/courses', 'book', ['/course/', '/test/', '/solve/']]]],
     ['Practice', [['Problems', '/problems', 'list', ['/solve/practice/']], ['Daily contest', '/contest', 'flame'], ['Playground', '/playground', 'play'], ['Cheat sheets', '/cheatsheets', 'doc']]],
@@ -27,7 +27,10 @@ export default function Shell({ title, children }) {
   const groups = NAV[me.role] || [];
   const all = groups.flatMap(([, items]) => items);
   const admin = me.role === 'admin';
-  const on = ([, to, , extra = []]) => (to === '/' ? pathname === '/' : pathname.startsWith(to)) || extra.some(p => pathname.startsWith(p));
+  // the longest matching prefix wins, so /solve/practice/ lights up Problems only, not Courses
+  const hit = ([, to, , extra = []]) => Math.max(to === '/' ? (pathname === '/' ? 1 : 0) : pathname.startsWith(to) ? to.length : 0, ...extra.map(p => (pathname.startsWith(p) ? p.length : 0)));
+  const best = all.reduce((b, i) => (hit(i) > hit(b) ? i : b), all[0]);
+  const on = item => hit(item) > 0 && hit(item) === hit(best);
   const dark = admin ? { background: 'var(--panel)', color: '#E7E8EC', borderRight: 0 } : undefined;
   const linkStyle = item => (admin ? (on(item) ? { background: '#F5F2EC', color: '#17181C' } : { color: '#E7E8EC' }) : undefined);
   const student = me.role === 'student';
@@ -46,7 +49,7 @@ export default function Shell({ title, children }) {
 
   // During a proctored exam the student sees only that test: no menu, and every other route bounces back.
   if (px.testId) {
-    const ok = pathname.startsWith(`/solve/${px.testId}/`) || (pathname.startsWith('/test/') && pathname.endsWith(`/${px.testId}`));
+    const ok = pathname.startsWith(`/solve/${px.courseId}/${px.testId}/`) || (pathname.startsWith('/test/') && pathname.endsWith(`/${px.testId}`));
     if (!ok) return <Navigate to={px.home} replace />;
     return (
       <div className="app"><div className="main" style={{ maxWidth: 1280, margin: '0 auto' }}>
@@ -62,7 +65,7 @@ export default function Shell({ title, children }) {
       <aside className="side" style={dark} data-dark={admin || undefined} aria-label="Sidebar">
         <div className="between" style={{ padding: '0 8px' }}>
           <Link to="/" style={{ textDecoration: 'none' }}><Logo /></Link>
-          {admin && <span className="chip" style={{ background: '#F2B8A8', color: '#17181C' }}>Admin</span>}
+          {admin && <span className="chip" style={{ background: '#F2B8A8', color: '#17181C', padding: '3px 8px', fontSize: 11 }}>Admin</span>}
         </div>
         <nav className="side-nav" aria-label="Main">
           {groups.map(([g, items]) => (

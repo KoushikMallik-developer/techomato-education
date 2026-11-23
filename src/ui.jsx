@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { courseCode } from './schedule.js';
 
 /* ---------- icons + logo (paths copied from the artifact) ---------- */
 const ICONS = {
@@ -9,7 +10,8 @@ const ICONS = {
   clip: 'M9 4h6v3H9zM7 5H5v16h14V5h-2M9 12l2 2 4-4',
   code: 'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',
   users: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 7.5M22 21a7 7 0 0 0-4.5-6.5',
-  plus: 'M12 5v14M5 12h14', arrow: 'M5 12h14M13 6l6 6-6 6', back: 'M15 6l-6 6 6 6', play: 'M7 4.5l12 7.5-12 7.5z',
+  plus: 'M12 5v14M5 12h14',
+  arrow: 'M5 12h14M13 6l6 6-6 6', back: 'M15 6l-6 6 6 6', play: 'M7 4.5l12 7.5-12 7.5z',
   lock: 'M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
   logout: 'M15 4h4v16h-4M10 17l5-5-5-5M15 12H3',
   doc: 'M6 3h9l4 4v14H6zM14 3v5h5', list: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01',
@@ -18,8 +20,10 @@ const ICONS = {
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
   flame: 'M12 22c4 0 7-2.7 7-6.8 0-4-3-6.2-4.3-9.7-.3 2.6-1.6 3.9-3 4.4.4-3.3-.9-6.2-3.7-7.9.3 3.8-3 6.4-3 11.2C5 19.3 8 22 12 22z',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   bell: 'M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0',
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.2 14H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4.6V4.5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
@@ -136,7 +140,7 @@ export const Loading = () => (
 /* ---------- course cards (artifact "Courses" grid) ---------- */
 const TINTS = ['var(--accent-soft)', 'var(--pass-soft)', '#E6EFE3', '#EFEAE1', 'var(--warn-soft)'];
 const tint = id => TINTS[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % TINTS.length];
-export function CourseGrid({ courses, empty }) {
+export function CourseGrid({ courses, empty, extra }) {
   if (!courses.length) return <Empty title={empty} />;
   return (
     <div className="grid g3">
@@ -149,7 +153,8 @@ export function CourseGrid({ courses, empty }) {
           <div className="stack" style={{ gap: 8, padding: '4px 20px 20px' }}>
             <h2 className="h3" style={{ fontSize: 22 }}>{c.title}</h2>
             <p className="small ink2" style={{ margin: 0 }}>{c.description}</p>
-            <div className="small muted">{plural(c.students?.length || 0, "student")}, {plural(c.testIds?.length || 0, "test")}</div>
+            <div className="small muted">{plural(c.students?.length || 0, "student")}, {plural(c.testIds?.length || 0, "test")} · <span className="mono">{courseCode(c)}</span></div>
+            {extra?.(c)}
           </div>
         </Link>
       ))}
