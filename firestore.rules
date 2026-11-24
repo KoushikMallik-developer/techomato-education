@@ -53,7 +53,10 @@ service cloud.firestore {
     // In-app notifications: staff create them, the owner reads and marks them read.
     match /notifications/{nid} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if staff();
+      // admin: anyone; a trainer: only the students of their own course
+      allow create: if request.auth != null && (role() == 'admin'
+        || (role() == 'trainer' && request.resource.data.userId in get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.students
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.trainerId == request.auth.uid));
       allow update: if request.auth != null && resource.data.userId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
@@ -61,20 +64,32 @@ service cloud.firestore {
     // Proctoring evidence for tests marked proctored. Students write their own; staff read all; a student reads their own (to know an exam was auto-submitted).
     // Document ids are uid_courseId_testId_n with n capped, so one student cannot flood the free write quota. Webcam photos are small JPEG data URLs (the free plan has no Storage).
     match /proctor/{id} {
-      allow read: if staff() || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow read: if canSeeEvidence(resource.data);
       allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid
         && id.matches(request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId + '_[0-9]+')
         && int(id.split('_')[3]) < 3000
+        && inCourseOf(request.resource.data)
         && get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.proctored == true
         && request.resource.data.kind.size() < 40 && request.resource.data.get('detail', '').size() < 300;
     }
     match /snaps/{id} {
-      allow read: if staff() || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow read: if canSeeEvidence(resource.data);
       allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid
         && id.matches(request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId + '_[0-9]+')
         && int(id.split('_')[3]) < 200
+        && inCourseOf(request.resource.data)
         && get(/databases/$(database)/documents/tests/$(request.resource.data.testId)).data.proctored == true
         && request.resource.data.img.size() < 60000 && request.resource.data.get('reason', '').size() < 40;
+    }
+
+    // When a student ended a test and how many flags they had, so classmates can be ranked without reading proctor logs. Written once, never changed.
+    match /finishes/{id} {
+      allow read: if request.auth != null && (staff() || inCourseOf(resource.data));
+      allow create: if request.auth != null && role() == 'student' && request.resource.data.userId == request.auth.uid
+        && id == request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId
+        && inCourseOf(request.resource.data)
+        && request.resource.data.flags is int && request.resource.data.flags >= 0 && request.resource.data.flags < 1000
+        && request.resource.data.at > request.time.toMillis() - 120000 && request.resource.data.at < request.time.toMillis() + 120000;
     }
 
     // Manual payment ledger, written when an admin enrolls a student.
@@ -98,6 +113,12 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['beat', 'left']);
     }
 
+    // Webcam photos and logs: the student, an admin, or the trainer of that course (not other trainers).
+    function canSeeEvidence(d) {
+      return request.auth != null && (d.userId == request.auth.uid || role() == 'admin'
+        || get(/databases/$(database)/documents/courses/$(d.courseId)).data.trainerId == request.auth.uid);
+    }
+
     // The student is enrolled in the course and the course has the test.
     function inCourseOf(d) {
       let c = get(/databases/$(database)/documents/courses/$(d.courseId)).data;
@@ -114,15 +135,19 @@ service cloud.firestore {
 
     // One doc per (student, course, test, question): the same test in two courses has separate results. Free students may only create it (one attempt); subscribers may overwrite it.
     match /submissions/{sid} {
-      allow read: if request.auth != null && (staff() || resource.data.userId == request.auth.uid);
+      // students of a course can see everyone's scores on its tests, open or closed (the app only shows totals, never another student's code)
+      allow read: if request.auth != null && (staff() || resource.data.userId == request.auth.uid
+        || (resource.data.testId != 'practice' && inCourseOf(resource.data)));
       allow create: if request.auth != null && role() == 'student'
         && request.resource.data.userId == request.auth.uid
         && sid == request.auth.uid + '_' + request.resource.data.courseId + '_' + request.resource.data.testId + '_' + request.resource.data.questionId
         && ((request.resource.data.testId == 'practice' && request.resource.data.courseId == 'practice')
             || (exists(/databases/$(database)/documents/tests/$(request.resource.data.testId)) && inCourseOf(request.resource.data)))
         && inTime(request.resource.data);
-      allow update: if request.auth != null && role() == 'student' && me().subscribed == true
-        && request.resource.data.userId == request.auth.uid && inTime(request.resource.data);
+      allow update: if request.auth != null && role() == 'student' && me().subscribed == true && resource.data.testId == 'practice'
+        && request.resource.data.userId == request.auth.uid && inTime(request.resource.data)
+        && request.resource.data.courseId == resource.data.courseId && request.resource.data.testId == resource.data.testId
+        && request.resource.data.questionId == resource.data.questionId;
     }
   }
 }

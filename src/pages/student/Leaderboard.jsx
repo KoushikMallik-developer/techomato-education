@@ -1,7 +1,7 @@
 import { collection, getDoc, doc, limit, orderBy, query } from 'firebase/firestore';
 import { db, list } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { Avatar, Empty, Icon, Loading, useLoad } from '../../ui.jsx';
+import { Avatar, Empty, Icon, Loading, useLoad, Card } from '../../ui.jsx';
 
 /* ---------- leaderboard ---------- */
 export function Leaderboard() {
@@ -16,19 +16,19 @@ export function Leaderboard() {
   const board = (rows.some(r => r.id === me.uid) ? rows : [...rows, { id: me.uid, name: me.name, xp: 0, streak: 0 }]).sort((a, b) => b.xp - a.xp);
   if (!board.length) return <Empty title="No scores yet" body="Submit a test question to earn XP and appear here." />;
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <p className="muted" style={{ margin: '-14px 0 0' }}>Every passed test case on a submission earns 10 XP. Submit on consecutive days to build a streak.</p>
-      <section className="card stack" style={{ gap: 6 }}>
+    <div className="flex flex-col gap-5">
+      <p className="text-muted m-[-14px_0_0]">Every passed test case on a submission earns 10 XP. Submit on consecutive days to build a streak.</p>
+      <Card as="section" className="flex flex-col gap-1.5">
         {board.map((p, i) => (
-          <div key={p.id} className="row" style={{ padding: '8px 10px', borderRadius: 12, background: p.id === me.uid ? 'var(--accent-soft)' : 'transparent' }}>
-            <span className="mono small muted" style={{ width: 24 }}>{i + 1}</span>
+          <div key={p.id} className="flex items-center gap-3 p-[8px_10px] rounded-[12px]" style={{ background: p.id === me.uid ? 'var(--accent-soft)' : 'transparent' }}>
+            <span className="font-mono text-[13px] text-muted w-6">{i + 1}</span>
             <Avatar name={p.name} size={32} />
-            <span style={{ flexGrow: 1, fontSize: 15, fontWeight: p.id === me.uid ? 700 : 500 }}>{p.name}{p.id === me.uid && ' (you)'}</span>
-            <span className="row small muted" style={{ gap: 4 }}><Icon name="flame" size={14} />{p.streak}</span>
-            <span className="mono small" style={{ width: 70, textAlign: 'right' }}>{p.xp} XP</span>
+            <span className="grow text-[15px]" style={{ fontWeight: p.id === me.uid ? 700 : 500 }}>{p.name}{p.id === me.uid && ' (you)'}</span>
+            <span className="flex items-center text-[13px] text-muted gap-1"><Icon name="flame" size={14} />{p.streak}</span>
+            <span className="font-mono text-[13px] w-17.5 text-right">{p.xp} XP</span>
           </div>
         ))}
-      </section>
+      </Card>
     </div>
   );
 }

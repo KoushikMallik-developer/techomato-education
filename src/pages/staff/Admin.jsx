@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addDoc, collection, doc, getCountFromServer, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { createLogin, db, freeCode, list } from '../../firebase.js';
-import { Avatar, Btn, CourseGrid, Empty, Field, Icon, Loading, attempt, notify, plural, useBusy, useLoad } from '../../ui.jsx';
+import { Avatar, Btn, CourseGrid, Empty, Field, Icon, Loading, attempt, notify, plural, useBusy, useLoad, btn, Card, Chip, Input, H3 } from '../../ui.jsx';
 
 export function AdminCourses() {
   const [data, reload] = useLoad(async () => ({ courses: await list(collection(db, 'courses')), users: await list(collection(db, 'users')) }));
@@ -24,23 +24,23 @@ export function AdminCourses() {
     });
   };
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="between">
-        <p className="muted" style={{ margin: 0 }}>Enroll students here once they've paid.</p>
-        <button className="btn btn-ink" onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'Add course'}</button>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-muted m-0">Enroll students here once they've paid.</p>
+        <button className={btn('ink')} onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'Add course'}</button>
       </div>
       {open && (
-        <form className="card grid g3" onSubmit={add}>
-          <Field label="Title"><input className="input" required value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-          <Field label="Description"><input className="input" value={f.description} onChange={e => setF({ ...f, description: e.target.value })} /></Field>
+        <Card as="form" className="grid gap-4 grid-cols-3 max-tablet:grid-cols-1" onSubmit={add}>
+          <Field label="Title"><Input required value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label="Description"><Input value={f.description} onChange={e => setF({ ...f, description: e.target.value })} /></Field>
           <Field label="Trainer">
-            <select className="input" value={f.trainerId} onChange={e => setF({ ...f, trainerId: e.target.value })}>
+            <Input as="select" value={f.trainerId} onChange={e => setF({ ...f, trainerId: e.target.value })}>
               <option value="">Select…</option>
               {trainers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            </Input>
           </Field>
           <div><Btn v="accent" disabled={busy}>Save course</Btn></div>
-        </form>
+        </Card>
       )}
       <CourseGrid courses={data.courses} empty="No courses yet" />
     </div>
@@ -67,39 +67,39 @@ export function AdminUsers() {
   };
   const toggle = u => attempt(async () => { await updateDoc(doc(db, 'users', u.id), { subscribed: !u.subscribed }); reload(); });
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="between">
-        <p className="muted" style={{ margin: 0 }}>Subscribed students can resubmit answers. Free students get one attempt per question.</p>
-        <button className="btn btn-ink" onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'Add user'}</button>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-muted m-0">Subscribed students can resubmit answers. Free students get one attempt per question.</p>
+        <button className={btn('ink')} onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'Add user'}</button>
       </div>
       {open && (
-        <form className="card grid g4" onSubmit={add}>
-          <Field label="Name"><input className="input" required value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
-          <Field label="Email"><input className="input" type="email" required value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></Field>
-          <Field label="Password (min 6)"><input className="input" minLength={6} required value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></Field>
+        <Card as="form" className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2" onSubmit={add}>
+          <Field label="Name"><Input required value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" required value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></Field>
+          <Field label="Password (min 6)"><Input minLength={6} required value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></Field>
           <Field label="Role">
-            <select className="input" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
+            <Input as="select" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
               <option value="student">Student</option><option value="trainer">Trainer</option>
-            </select>
+            </Input>
           </Field>
           <div><Btn v="accent" disabled={busy}>Create user</Btn></div>
-        </form>
+        </Card>
       )}
-      <div className="card scroll-x" style={{ padding: 6 }}>
-        <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Subscribed</th></tr></thead>
+      <Card className="overflow-x-auto p-1.5">
+        <table className="border-collapse w-full">
+          <thead><tr><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Name</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Email</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Role</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Subscribed</th></tr></thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td><span className="row" style={{ gap: 10 }}><Avatar name={u.name} size={32} /><b>{u.name}</b></span></td>
-                <td className="muted">{u.email}</td>
-                <td><span className="chip" style={{ textTransform: 'capitalize' }}>{u.role}</span></td>
-                <td>{u.role === 'student' ? <button className="switch" role="switch" aria-checked={!!u.subscribed} aria-label={`Subscription for ${u.name}`} onClick={() => toggle(u)} /> : <span className="muted">—</span>}</td>
+                <td className="p-3 border-b border-line text-[15px]"><span className="flex items-center gap-2.5"><Avatar name={u.name} size={32} /><b>{u.name}</b></span></td>
+                <td className="p-3 border-b border-line text-[15px] text-muted">{u.email}</td>
+                <td className="p-3 border-b border-line text-[15px]"><Chip as="span" className="[text-transform:capitalize]">{u.role}</Chip></td>
+                <td className="p-3 border-b border-line text-[15px]">{u.role === 'student' ? <button className="relative w-12 h-7 rounded-full border-0 bg-line shrink-0 transition-[background] duration-150 after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:w-[22px] after:h-[22px] after:rounded-full after:bg-white after:transition-transform after:duration-150 aria-checked:bg-ink aria-checked:after:translate-x-5" role="switch" aria-checked={!!u.subscribed} aria-label={`Subscription for ${u.name}`} onClick={() => toggle(u)} /> : <span className="text-muted">—</span>}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -120,22 +120,22 @@ export function AdminOverview() {
     ['Revenue', '₹' + revenue.toLocaleString('en-IN'), `${plural(d.pays.length, 'payment')}, ${plural(d.subs, 'submission')}`],
   ];
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="grid g4">
+    <div className="flex flex-col gap-5">
+      <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
         {stats.map(([l, n, sub], i) => (
-          <div key={l} className={`${i === 0 ? 'card-dark' : 'card'} stack stat`} style={{ gap: 10 }}>
-            <div className="small" style={{ opacity: 0.75 }}>{l}</div><div className="big">{n}</div><div className="small" style={{ opacity: 0.75 }}>{sub}</div>
+          <div key={l} className={`${i === 0 ? 'bg-panel text-cream rounded-lg p-[22px]' : 'bg-surface border border-line rounded-lg p-[22px] max-phone:p-[18px] shadow-[0_1px_2px_rgba(23,24,28,.04),0_8px_24px_-16px_rgba(23,24,28,.12)] transition-[box-shadow,transform,border-color] duration-200'} flex flex-col [:where(&)_.big]:text-[42px] max-phone:[:where(&)_.big]:text-[32px] gap-2.5`}>
+            <div className="text-[13px] opacity-[0.75]">{l}</div><div className="big font-display font-extrabold tracking-[-.03em] leading-none">{n}</div><div className="text-[13px] opacity-[0.75]">{sub}</div>
           </div>
         ))}
       </div>
-      <section className="card stack" style={{ gap: 6 }}>
-        <div className="between"><h2 className="h3" style={{ fontSize: 22 }}>Recent payments</h2><Link to="/payments" className="small" style={{ fontWeight: 600 }}>See all</Link></div>
-        {recent.length === 0 ? <p className="muted small">No payments recorded yet. Add an amount when you enroll a student.</p> : recent.map(p => (
-          <div key={p.id} className="between" style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
-            <span><b>{p.userName}</b> <span className="muted small">enrolled in {p.courseTitle}</span></span><span className="mono">₹{p.amount.toLocaleString('en-IN')}</span>
+      <Card as="section" className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-3"><H3 as="h2" className="text-[22px]">Recent payments</H3><Link to="/payments" className="text-[13px] font-semibold">See all</Link></div>
+        {recent.length === 0 ? <p className="text-muted text-[13px]">No payments recorded yet. Add an amount when you enroll a student.</p> : recent.map(p => (
+          <div key={p.id} className="flex items-center justify-between gap-3 p-[10px_0] [border-top:1px_solid_var(--line)]">
+            <span><b>{p.userName}</b> <span className="text-muted text-[13px]">enrolled in {p.courseTitle}</span></span><span className="font-mono">₹{p.amount.toLocaleString('en-IN')}</span>
           </div>
         ))}
-      </section>
+      </Card>
     </div>
   );
 }
@@ -145,17 +145,17 @@ export function AdminPayments() {
   if (!pays) return <Loading />;
   const rows = [...pays].sort((a, b) => b.at - a.at);
   return (
-    <div className="stack" style={{ gap: 16 }}>
-      <p className="muted" style={{ margin: 0 }}>Payments are recorded when you enroll a student on a course page. Total: <b>₹{rows.reduce((n, p) => n + p.amount, 0).toLocaleString('en-IN')}</b></p>
+    <div className="flex flex-col gap-4">
+      <p className="text-muted m-0">Payments are recorded when you enroll a student on a course page. Total: <b>₹{rows.reduce((n, p) => n + p.amount, 0).toLocaleString('en-IN')}</b></p>
       {rows.length === 0 ? <Empty title="No payments yet" /> : (
-        <div className="card scroll-x" style={{ padding: 6 }}>
-          <table>
-            <thead><tr><th>Date</th><th>Student</th><th>Course</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
+        <Card className="overflow-x-auto p-1.5">
+          <table className="border-collapse w-full">
+            <thead><tr><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Date</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Student</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Course</th><th className="text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line text-right">Amount</th></tr></thead>
             <tbody>{rows.map(p => (
-              <tr key={p.id}><td className="muted">{new Date(p.at).toLocaleDateString('en-IN')}</td><td><b>{p.userName}</b></td><td>{p.courseTitle}</td><td className="mono" style={{ textAlign: 'right' }}>₹{p.amount.toLocaleString('en-IN')}</td></tr>
+              <tr key={p.id}><td className="p-3 border-b border-line text-[15px] text-muted">{new Date(p.at).toLocaleDateString('en-IN')}</td><td className="p-3 border-b border-line text-[15px]"><b>{p.userName}</b></td><td className="p-3 border-b border-line text-[15px]">{p.courseTitle}</td><td className="p-3 border-b border-line text-[15px] font-mono text-right">₹{p.amount.toLocaleString('en-IN')}</td></tr>
             ))}</tbody>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   );

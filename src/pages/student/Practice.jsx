@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { collection, doc, getDoc, query, where } from 'firebase/firestore';
+import { collection, doc, documentId, getDoc, limit, query, where } from 'firebase/firestore';
 import { auth, db, list, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { dailyOf } from '../../score.js';
 import { NAV } from '../../Shell.jsx';
-import { examQuestionIds, isPublic, openQuestions } from './data.js';
+import { isPublic } from './data.js';
 import { langOfSub, typeLabel } from '../../schedule.js';
-import { CodeBlock, Empty, Icon, Loading, Tabs, useLoad } from '../../ui.jsx';
+import { CodeBlock, Empty, Icon, Loading, Tabs, useLoad, Card, Chip, Btn, btn, Input, H2, H3, notify } from '../../ui.jsx';
 
 const mySubs = uid => list(query(collection(db, 'submissions'), where('userId', '==', uid)));
 export const solvedIds = subs => new Set(subs.filter(s => s.passed === s.total).map(s => s.questionId));
@@ -25,13 +25,44 @@ export function useCountdown() {
 
 /* ---------- problems bank ---------- */
 const Seg = ({ value, onChange, options }) => (
-  <div className="seg">{options.map(([k, l]) => <button key={k} aria-pressed={value === k} onClick={() => onChange(k)} style={{ minHeight: 40 }}>{l}</button>)}</div>
+  <div className="seg flex flex-wrap gap-2 [:where(&)_button]:min-h-11 [:where(&)_button]:px-4 [:where(&)_button]:rounded-xl [:where(&)_button]:border-[1.5px] [:where(&)_button]:border-line [:where(&)_button]:bg-surface [:where(&)_button]:font-medium [:where(&)_button[aria-pressed=true]]:border-ink [:where(&)_button[aria-pressed=true]]:bg-ink [:where(&)_button[aria-pressed=true]]:text-paper [:where(&)_button[aria-pressed=true]]:font-semibold [:where(&)_button:disabled]:opacity-50 [:where(&)_button:disabled]:cursor-not-allowed">{options.map(([k, l]) => <button className="min-h-10" key={k} aria-pressed={value === k} onClick={() => onChange(k)}>{l}</button>)}</div>
 );
+
+// The bank can hold thousands of questions, so Problems reads it in pages. Level and "Web page" are filtered by Firestore;
+// private questions and "Programming" are dropped here, and more raw pages are read until a page is full.
+// shortcut: the search box only covers the problems already loaded (press Load more to reach the rest). Server-side title search needs an index per filter combination.
+const PAGE = 50, RAW = 100;
+async function fetchProblems(f, after) {
+  const base = [...(f.diff !== 'all' ? [where('diff', '==', f.diff)] : []), ...(f.env === 'web' ? [where('env', '==', 'web')] : [])];
+  const rows = [];
+  let cur = after, more = true;
+  while (rows.length < PAGE && more) {
+    const got = await list(query(collection(db, 'questions'), ...base, ...(cur ? [where(documentId(), '>', cur)] : []), limit(RAW)));
+    got.forEach(q => { if (isPublic(q) && (f.env !== 'code' || q.env !== 'web')) rows.push(q); });
+    more = got.length === RAW;
+    cur = got.at(-1)?.id ?? cur;
+  }
+  return { rows, cur, more };
+}
 
 export function Problems() {
   const me = useMe();
-  const [d] = useLoad(async () => ({ qs: await openQuestions(), subs: await mySubs(me.uid) }));
+  const [subs] = useLoad(() => mySubs(me.uid));
   const [f, setF] = useState({ text: '', env: 'all', diff: 'all', status: 'all' });
+  const [pg, setPg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setPg(null);
+    fetchProblems(f).then(p => live && setPg(p)).catch(e => { console.error(e); notify('Could not load problems. Check your connection and refresh.'); });
+    return () => { live = false; };
+  }, [f.diff, f.env]); // text and status only filter what is already loaded
+  const more = async () => {
+    setBusy(true);
+    try { const n = await fetchProblems(f, pg.cur); setPg({ rows: [...pg.rows, ...n.rows], cur: n.cur, more: n.more }); } catch (e) { console.error(e); notify('Could not load more problems.'); }
+    setBusy(false);
+  };
+  const d = subs && { qs: pg?.rows || [], subs };
   if (!d) return <Loading />;
   const done = solvedIds(d.subs);
   const rows = d.qs.filter(q =>
@@ -39,33 +70,34 @@ export function Problems() {
     (f.status === 'all' || (f.status === 'solved') === done.has(q.id)) &&
     `${q.title} ${q.topic || ''}`.toLowerCase().includes(f.text.toLowerCase()));
   return (
-    <div className="stack" style={{ gap: 16 }}>
-      <p className="muted" style={{ margin: '-14px 0 0' }}>Practice on any question in the bank. The free plan gives one graded submission per question.</p>
-      <div className="stack" style={{ gap: 10 }}>
-        <input className="input" type="search" placeholder="Search by title or topic" aria-label="Search problems" value={f.text} onChange={e => setF({ ...f, text: e.target.value })} />
-        <div className="filters">
+    <div className="flex flex-col gap-4">
+      <p className="text-muted m-[-14px_0_0]">Practice on any question in the bank. The free plan gives one graded submission per question.</p>
+      <div className="flex flex-col gap-2.5">
+        <Input type="search" placeholder="Search by title or topic" aria-label="Search problems" value={f.text} onChange={e => setF({ ...f, text: e.target.value })} />
+        <div className="flex flex-wrap gap-x-6 gap-y-2.5 [&_.seg]:gap-1.5 [&_.seg_button]:min-h-10 [&_.seg_button]:pointer-coarse:min-h-11 [&_.seg_button]:px-3.5 [&_.seg_button]:text-[14px] [&_.seg_button]:rounded-full">
           <Seg value={f.env} onChange={env => setF({ ...f, env })} options={[['all', 'All types'], ['code', 'Programming'], ['web', 'Web page']]} />
           <Seg value={f.diff} onChange={diff => setF({ ...f, diff })} options={[['all', 'Any level'], ['Easy', 'Easy'], ['Medium', 'Medium'], ['Hard', 'Hard']]} />
           <Seg value={f.status} onChange={status => setF({ ...f, status })} options={[['all', 'All'], ['todo', 'To do'], ['solved', 'Solved']]} />
         </div>
       </div>
-      {rows.length === 0 ? <Empty title="No problems match" body="Try clearing a filter." /> : (
-        <div className="card" style={{ padding: 6 }}>
+      {!pg ? <Loading /> : rows.length === 0 && !pg.more ? <Empty title="No problems match" body="Try clearing a filter." /> : (
+        <Card className="p-1.5">
           {rows.map(q => (
-            <Link key={q.id} to={`/solve/practice/practice/${q.id}`} className="rowlink">
-              <span className="row">
-                {done.has(q.id) ? <Icon name="check" size={18} stroke={2.4} color="var(--pass-strong)" /> : <span className="ring" aria-hidden="true" />}
-                <span style={{ fontWeight: 600 }}>{q.title}</span>
+            <Link key={q.id} to={`/solve/practice/practice/${q.id}`} className="group/rl flex items-center justify-between gap-3 p-3 rounded-xl no-underline hover:bg-soft [&+&]:border-t [&+&]:border-line [&+&]:rounded-t-none hover:border-t-transparent [&:hover+&]:border-t-transparent">
+              <span className="flex items-center gap-3">
+                {done.has(q.id) ? <Icon name="check" size={18} stroke={2.4} color="var(--pass-strong)" /> : <span className="w-[18px] h-[18px] rounded-full border-2 border-line shrink-0" aria-hidden="true" />}
+                <span className="font-semibold">{q.title}</span>
               </span>
-              <span className="row small">
-                <span className="muted">{q.topic}</span><span className="chip">{typeLabel(q)}</span>
-                {q.diff && <span className={`diff-${q.diff}`} style={{ fontWeight: 700, width: 56, textAlign: 'right' }}>{q.diff}</span>}
-                <span className="go" aria-hidden="true">›</span>
+              <span className="flex items-center gap-3 text-[13px]">
+                <span className="text-muted">{q.topic}</span><Chip as="span">{typeLabel(q)}</Chip>
+                {q.diff && <span className={`${{ Easy: 'text-pass', Medium: 'text-warn', Hard: 'text-accent-ink' }[q.diff]} font-bold w-14 text-right`}>{q.diff}</span>}
+                <span className="text-muted transition-transform duration-150 group-hover/rl:translate-x-[3px] group-hover/rl:text-ink" aria-hidden="true">›</span>
               </span>
             </Link>
           ))}
-        </div>
+        </Card>
       )}
+      {pg?.more && <div><Btn v="ghost" onClick={more} disabled={busy}>{busy ? 'Loading…' : 'Load more problems'}</Btn></div>}
     </div>
   );
 }
@@ -75,7 +107,7 @@ export function Contest() {
   const me = useMe();
   const left = useCountdown();
   const [d] = useLoad(async () => {
-    const q = dailyOf((await questions()).filter(isPublic), await examQuestionIds());
+    const q = dailyOf((await questions()).filter(isPublic));
     const all = q ? await mySubs(me.uid).then(a => a.filter(s => s.questionId === q.id)) : []; // any attempt counts: in a test or in practice
     return { q, sub: all.sort((a, b) => b.passed - a.passed)[0] || null };
   });
@@ -83,18 +115,18 @@ export function Contest() {
   if (!d.q) return <Empty title="No contest today" body="The question bank is empty." />;
   const { q, sub } = d, solved = sub && sub.passed === sub.total;
   return (
-    <div className="stack" style={{ gap: 20, maxWidth: 760 }}>
-      <article className="card stack" style={{ gap: 14, background: 'var(--accent)', color: 'var(--on-accent)', border: 0, padding: 30 }}>
-        <div className="between small"><span>Daily contest</span><span className="mono">{left} left</span></div>
-        <h2 className="h2" style={{ fontSize: 40 }}>{q.title}</h2>
-        <div className="small">{[q.diff, q.topic, typeLabel(q)].filter(Boolean).join(', ')}, +{10 * q.tests.length} XP</div>
-        <div className="small" style={{ fontWeight: 600 }}>{solved ? 'Solved. Well done!' : sub ? `Last result: ${sub.passed}/${sub.total} test cases` : 'Not attempted yet'}</div>
-        <Link to={`/solve/practice/practice/${q.id}`} className="btn btn-white" style={{ alignSelf: 'flex-start' }}>{sub ? 'View your solution' : 'Solve now'}</Link>
+    <div className="flex flex-col gap-5 max-w-[760px]">
+      <article className="border border-line rounded-lg shadow-[0_1px_2px_rgba(23,24,28,.04),0_8px_24px_-16px_rgba(23,24,28,.12)] transition-[box-shadow,transform,border-color] duration-200 flex flex-col gap-3.5 bg-accent text-on-accent [border:0px] p-7.5">
+        <div className="flex items-center justify-between gap-3 text-[13px]"><span>Daily contest</span><span className="font-mono">{left} left</span></div>
+        <H2 className="text-[40px]">{q.title}</H2>
+        <div className="text-[13px]">{[q.diff, q.topic, typeLabel(q)].filter(Boolean).join(', ')}, +{10 * q.tests.length} XP</div>
+        <div className="text-[13px] font-semibold">{solved ? 'Solved. Well done!' : sub ? `Last result: ${sub.passed}/${sub.total} test cases` : 'Not attempted yet'}</div>
+        <Link to={`/solve/practice/practice/${q.id}`} className={btn('white', 'md', 'self-start')}>{sub ? 'View your solution' : 'Solve now'}</Link>
       </article>
-      <div className="card stack" style={{ gap: 8 }}>
-        <h3 className="h3" style={{ fontSize: 20 }}>How it works</h3>
-        <p className="ink2" style={{ margin: 0 }}>A new question every day. Every passed test case earns 10 XP, and submitting on consecutive days builds your streak.</p>
-      </div>
+      <Card className="flex flex-col gap-2">
+        <H3 className="text-[20px]">How it works</H3>
+        <p className="text-ink-2 m-0">A new question every day. Every passed test case earns 10 XP, and submitting on consecutive days builds your streak.</p>
+      </Card>
     </div>
   );
 }
@@ -119,13 +151,13 @@ export function Achievements() {
     envs: new Set(d.subs.filter(x => done.has(x.questionId)).map(x => { const q = d.qs.find(y => y.id === x.questionId); return q ? (q.env === 'web' ? 'web' : langOfSub(x, q)) : null; }).filter(Boolean)).size };
   const got = BADGES.filter(b => b[3](s)).length;
   return (
-    <div className="stack" style={{ gap: 16 }}>
-      <p className="muted" style={{ margin: '-14px 0 0' }}>{got} of {BADGES.length} unlocked.</p>
-      <div className="grid g4">
+    <div className="flex flex-col gap-4">
+      <p className="text-muted m-[-14px_0_0]">{got} of {BADGES.length} unlocked.</p>
+      <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
         {BADGES.map(([name, how, icon, test]) => (
-          <div key={name} className={`badge-tile ${test(s) ? '' : 'locked'}`}>
-            <span className="badge-icon"><Icon name={test(s) ? icon : 'lock'} size={28} /></span>
-            <b>{name}</b><span className="small muted">{how}</span>
+          <div key={name} className={`flex flex-col items-center text-center gap-2 py-5 px-3.5 rounded-[20px] border border-line bg-surface ${test(s) ? '' : 'opacity-55!'}`}>
+            <span className={`w-16 h-16 rounded-[20px] grid place-items-center ${test(s) ? 'bg-accent-soft text-accent-ink' : 'bg-soft text-muted'}`}><Icon name={test(s) ? icon : 'lock'} size={28} /></span>
+            <b>{name}</b><span className="text-[13px] text-muted">{how}</span>
           </div>
         ))}
       </div>
@@ -143,10 +175,10 @@ const SHEETS = {
 export function CheatSheets() {
   const [tab, setTab] = useState('Python');
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className="flex flex-col gap-4">
       <Tabs label="Language" value={tab} onChange={setTab} tabs={Object.keys(SHEETS).map(k => [k, k])} />
       {SHEETS[tab].map(([t, code]) => (
-        <section key={t} className="card stack" style={{ gap: 8 }}><h3 className="h3" style={{ fontSize: 18 }}>{t}</h3><CodeBlock code={code} /></section>
+        <Card as="section" key={t} className="flex flex-col gap-2"><H3 className="text-[18px]">{t}</H3><CodeBlock code={code} /></Card>
       ))}
     </div>
   );
@@ -156,14 +188,14 @@ export function CheatSheets() {
 export function More() {
   const me = useMe();
   return (
-    <div className="stack" style={{ gap: 14 }}>
+    <div className="flex flex-col gap-3.5">
       {(NAV[me.role] || []).map(([g, items]) => (
-        <section key={g} className="card stack" style={{ gap: 2, padding: 8 }}>
-          <div className="side-group">{g}</div>
-          {items.map(([l, to, ic]) => <Link key={to} to={to} className="les-link" style={{ textDecoration: 'none' }}><Icon name={ic} size={18} />{l}</Link>)}
-        </section>
+        <Card as="section" key={g} className="flex flex-col gap-0.5 p-2">
+          <div className="text-[12px] font-bold tracking-[.08em] uppercase text-muted pt-2.5 px-3 pb-0.5">{g}</div>
+          {items.map(([l, to, ic]) => <Link key={to} to={to} className="flex items-center gap-2.5 w-full min-h-[42px] py-1.5 px-2.5 rounded-sm border-0 bg-transparent text-left text-[14px] hover:bg-soft no-underline"><Icon name={ic} size={18} />{l}</Link>)}
+        </Card>
       ))}
-      <button className="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
+      <button className={btn('ghost', 'md', 'self-start')} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
     </div>
   );
 }

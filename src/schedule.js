@@ -48,3 +48,10 @@ export const typeLabel = q => (isWeb(q) ? 'HTML / CSS / JS' : 'Programming');
 export const langsOf = test => (test?.languages?.length ? test.languages : Object.keys(LANGS)); // a test with no list allows all
 // the language a saved answer was written in; answers saved before languages existed carry the question's old language
 export const langOfSub = (sub, q) => sub?.lang || (LANGS[q.env] ? q.env : 'python');
+
+// What a trainer sees on a test: Draft until it is complete and in a course, then Scheduled, Open or Closed.
+export const notOpen = t => timed(t) && windowOf(t) !== 'open'; // a timed test that has not opened yet or has closed: nobody can start it
+export const statusOf = (t, bankIds, courseCount) => (t.draft || readiness(t, bankIds, 0, courseCount).length ? 'draft' : windowOf(t));
+
+// Do a course's students get told about a test? 'all' = just published, 'new' = only courses the test was just added to, 'none' = a draft.
+export const shouldTell = (tell, on, had) => on && (tell === 'all' || (tell === 'new' && !had));

@@ -14,6 +14,11 @@ export function scoreTable(students, tests, caseCount, subs) {
 export const nextStreak = (cur, today, yesterday) => (cur.lastDay === today ? cur.streak : cur.lastDay === yesterday ? cur.streak + 1 : 1);
 
 export const dayKey = d => d.toLocaleDateString('en-CA'); // local calendar day, e.g. 2026-11-22
+// Class ranking: higher score, then fewer proctoring flags, then who finished first. Use with Array.sort.
+export const byRank = (a, b) => b.pct - a.pct || a.flags - b.flags || a.at - b.at;
+// How many answers were saved on each day: { '2026-11-22': 3 }. `at` is a number in demo mode and a Timestamp in Firebase.
+// shortcut: an answer is one document per question, so a re-submitted answer counts on its last day only.
+export const activityByDay = subs => subs.reduce((m, s) => { const t = s.at?.toMillis?.() ?? s.at; if (t) { const k = dayKey(new Date(t)); m[k] = (m[k] || 0) + 1; } return m; }, {});
 export const dayIndex = d => Math.floor(Date.parse(dayKey(d)) / 864e5); // whole days since 1970 for the local date
 
 // The daily-contest question. Picked from the full list so it does not change when exam questions (`hide`) come and go;

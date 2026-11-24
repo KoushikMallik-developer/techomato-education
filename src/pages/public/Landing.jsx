@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Avatar, Icon, highlight } from '../../ui.jsx';
+import { Avatar, Icon, highlight, btn, Card, Chip, H2, H3 } from '../../ui.jsx';
 import { Footer, PublicNav } from './PublicLayout.jsx';
 
 const HERO_CODE = 'def count_pairs(nums, k):\n    nums.sort()\n    i, j, total = 0, len(nums) - 1, 0\n    while i < j:\n        if nums[i] + nums[j] < k:\n            total += j - i\n            i += 1\n        else:\n            j -= 1\n    return total';
@@ -18,59 +18,59 @@ export default function Landing() {
       <PublicNav onJump={jump} />
 
       <main>
-        <div className="wrap">
-          <section className="hero">
-            <div className="stack reveal" style={{ gap: 26 }}>
-              <h1 className="h1 hero-h">Write the code. Pass the tests. Prove it.</h1>
-              <p className="ink2" style={{ fontSize: 20, lineHeight: 1.55, margin: 0, maxWidth: 540 }}>
+        <div className="max-w-[1280px] mx-auto px-6">
+          <section className="grid grid-cols-[1.05fr_1fr] gap-14 items-center pt-20 pb-24 max-tablet:grid-cols-1 max-tablet:pt-12 max-tablet:pb-16">
+            <div className="flex flex-col animate-rise2 gap-6.5">
+              <h1 className="font-display font-extrabold tracking-[-.035em] leading-[.98] m-0 text-[clamp(46px,6.2vw,84px)]">Write the code. Pass the tests. Prove it.</h1>
+              <p className="text-ink-2 text-[20px] leading-[1.55] m-0 max-w-[540px]">
                 Courses with real coding tests. Students solve questions right in the browser and see which test cases passed. Trainers see how every student scored.
               </p>
-              <div className="row" style={{ flexWrap: 'wrap' }}>
-                <Link to="/login" className="btn btn-accent btn-lg">Log in to start <Icon name="arrow" size={18} stroke={2.2} /></Link>
-                <a href="#/" onClick={jump('loop')} className="btn btn-ghost btn-lg">See how it works</a>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Link to="/login" className={btn('accent', 'lg')}>Log in to start <Icon name="arrow" size={18} stroke={2.2} /></Link>
+                <a href="#/" onClick={jump('loop')} className={btn('ghost', 'lg')}>See how it works</a>
               </div>
-              <div className="row muted small" style={{ flexWrap: 'wrap', gap: 18 }}>
+              <div className="flex items-center text-muted text-[13px] flex-wrap gap-4.5">
                 {['Code in your browser', 'Python, JavaScript, C++, HTML/CSS', 'Hidden test cases'].map(x => (
-                  <span key={x} className="row" style={{ gap: 6 }}><Icon name="check" size={16} stroke={2.4} color="var(--pass-strong)" />{x}</span>
+                  <span key={x} className="flex items-center gap-1.5"><Icon name="check" size={16} stroke={2.4} color="var(--pass-strong)" />{x}</span>
                 ))}
               </div>
             </div>
 
-            <div className="hero-stage reveal reveal-2" aria-label="Preview of the coding workspace">
-              <div className="window" style={{ position: 'absolute', left: 0, right: 30, top: 0 }}>
-                <div className="win-bar"><div className="dots"><span /><span /><span /></div><span>pair_sum.py</span><span style={{ color: '#F2B8A8' }}>Python</span></div>
-                <pre className="code" style={{ padding: '22px 24px' }} dangerouslySetInnerHTML={{ __html: highlight(HERO_CODE) }} />
-                <div className="row" style={{ padding: '14px 24px 20px', borderTop: '1px solid var(--panel-line)', flexWrap: 'wrap', gap: 8 }}>
-                  {['Sample 1', 'Sample 2', 'Hidden 8/8'].map(x => <span key={x} className="mono tiny" style={{ padding: '7px 11px', borderRadius: 8, background: '#1E3350', color: '#A9C7FF' }}>✓ {x}</span>)}
+            <div className="relative min-h-[540px] max-tablet:min-h-[480px] max-phone:min-h-[420px] animate-rise2 [animation-delay:.12s]" aria-label="Preview of the coding workspace">
+              <div className="bg-panel rounded-[20px] overflow-hidden shadow-[0_30px_60px_-24px_rgba(23,24,28,.5)] absolute left-0 right-7.5 top-0">
+                <div className="h-11 flex items-center justify-between px-[18px] border-b border-panel-line font-mono text-[12px] text-panel-muted"><div className="flex gap-[7px] [:where(&)_span]:w-[11px] [:where(&)_span]:h-[11px] [:where(&)_span]:rounded-full [:where(&)_span]:bg-[#3A3D46]"><span /><span /><span /></div><span>pair_sum.py</span><span className="text-rose">Python</span></div>
+                <pre className="font-mono text-[14px] leading-[1.75] text-panel-text m-0 whitespace-pre overflow-x-auto p-[22px_24px]" dangerouslySetInnerHTML={{ __html: highlight(HERO_CODE) }} />
+                <div className="flex items-center p-[14px_24px_20px] [border-top:1px_solid_var(--panel-line)] flex-wrap gap-2">
+                  {['Sample 1', 'Sample 2', 'Hidden 8/8'].map(x => <span key={x} className="font-mono text-[12px] p-[7px_11px] rounded-[8px] bg-[#1E3350] text-[#A9C7FF]">✓ {x}</span>)}
                 </div>
               </div>
-              <div className="float f-side" style={{ right: 0, bottom: 30, width: 240 }}>
-                <div className="small muted" style={{ fontWeight: 500 }}>Test cases passed</div>
-                <div className="big" style={{ fontSize: 42, margin: '8px 0 12px' }}>10/10</div>
-                <div className="pips" style={{ gridTemplateColumns: 'repeat(10,minmax(0,1fr))' }}>{Array.from({ length: 10 }, (_, i) => <span key={i} style={{ background: 'var(--pass-strong)' }} />)}</div>
+              <div className="absolute bg-surface rounded-[18px] py-[18px] px-5 shadow-[0_20px_40px_-18px_rgba(23,24,28,.35)] max-phone:hidden right-0 bottom-7.5 w-60">
+                <div className="text-[13px] text-muted font-medium">Test cases passed</div>
+                <div className="big font-display font-extrabold tracking-[-.03em] leading-none text-[42px] m-[8px_0_12px]">10/10</div>
+                <div className="grid gap-1 grow [:where(&)_span]:h-2.5 [:where(&)_span]:rounded-[3px] [:where(&)_span]:bg-line grid-cols-[repeat(10,minmax(0,1fr))]">{Array.from({ length: 10 }, (_, i) => <span className="bg-pass-strong" key={i} />)}</div>
               </div>
-              <div className="float row" style={{ left: 16, bottom: 0 }}>
-                <span style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--pass-soft)', display: 'grid', placeItems: 'center' }}><Icon name="check" color="var(--pass)" /></span>
-                <div><div style={{ fontWeight: 600 }}>Accepted</div><div className="small muted">All hidden tests passed</div></div>
+              <div className="absolute bg-surface rounded-[18px] py-[18px] px-5 shadow-[0_20px_40px_-18px_rgba(23,24,28,.35)] flex items-center gap-3 left-4 bottom-0">
+                <span className="w-11 h-11 rounded-[12px] bg-pass-soft grid place-items-center"><Icon name="check" color="var(--pass)" /></span>
+                <div><div className="font-semibold">Accepted</div><div className="text-[13px] text-muted">All hidden tests passed</div></div>
               </div>
             </div>
           </section>
         </div>
 
-        <section id="loop" className="band section">
-          <div className="wrap stack" style={{ gap: 48 }}>
-            <div className="between" style={{ flexWrap: 'wrap', alignItems: 'flex-end', gap: 24 }}>
-              <h2 className="h2" style={{ fontSize: 'clamp(36px,4.4vw,56px)', maxWidth: 640 }}>One place for the whole classroom.</h2>
-              <p className="ink2" style={{ fontSize: 18, margin: 0, maxWidth: 440 }}>Everyone gets a screen built for their job, and they all see the same results.</p>
+        <section id="loop" className="bg-surface border-y border-line py-24 max-phone:py-16">
+          <div className="max-w-[1280px] mx-auto px-6 flex flex-col gap-12">
+            <div className="flex justify-between flex-wrap items-end gap-6">
+              <H2 className="text-[clamp(36px,4.4vw,56px)] max-w-[640px]">One place for the whole classroom.</H2>
+              <p className="text-ink-2 text-[18px] m-0 max-w-[440px]">Everyone gets a screen built for their job, and they all see the same results.</p>
             </div>
-            <div className="grid g3" style={{ gap: 20 }}>
+            <div className="grid grid-cols-3 max-tablet:grid-cols-1 gap-5">
               {STEPS.map(([title, body, tags], i) => (
-                <article key={title} className="loop-card">
-                  <span className="mono small" style={{ color: 'var(--accent)', fontWeight: 500 }}>Step {i + 1}</span>
-                  <h3 className="h3" style={{ fontSize: 34 }}>{title}</h3>
-                  <p className="ink2" style={{ margin: 0, fontSize: 17, lineHeight: 1.6 }}>{body}</p>
-                  <div className="row" style={{ marginTop: 'auto', flexWrap: 'wrap', gap: 8 }}>
-                    {tags.map(y => <span key={y} className="chip" style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>{y}</span>)}
+                <article key={title} className="bg-paper rounded-3xl p-[34px] flex flex-col gap-4 min-h-[340px]">
+                  <span className="font-mono text-[13px] text-accent font-medium">Step {i + 1}</span>
+                  <H3 className="text-[34px]">{title}</H3>
+                  <p className="text-ink-2 m-0 text-[17px] leading-[1.6]">{body}</p>
+                  <div className="flex items-center mt-[auto] flex-wrap gap-2">
+                    {tags.map(y => <span key={y} className="inline-flex items-center gap-1.5 py-1.5 px-[11px] rounded-full text-[12px] font-semibold whitespace-nowrap bg-surface [border:1px_solid_var(--line)]">{y}</span>)}
                   </div>
                 </article>
               ))}
@@ -78,47 +78,47 @@ export default function Landing() {
           </div>
         </section>
 
-        <div className="wrap">
-          <section id="results" className="section">
-            <div className="dark-band">
-              <div className="stack" style={{ gap: 22 }}>
-                <h2 className="h2" style={{ fontSize: 'clamp(36px,4.4vw,56px)' }}>See how every student scored.</h2>
-                <p style={{ fontSize: 18, margin: 0, color: '#C9CBD2' }}>Assign a test to a course and watch results come in. Trainers get a score for each student on each test, based on the test cases they passed.</p>
-                <Link to="/login" className="btn btn-accent" style={{ alignSelf: 'flex-start' }}>Log in</Link>
+        <div className="max-w-[1280px] mx-auto px-6">
+          <section id="results" className="py-24 max-phone:py-16">
+            <div className="bg-panel text-cream rounded-[32px] py-20 px-16 grid grid-cols-2 gap-14 items-center max-tablet:grid-cols-1 max-tablet:py-12 max-tablet:px-7">
+              <div className="flex flex-col gap-5.5">
+                <H2 className="text-[clamp(36px,4.4vw,56px)]">See how every student scored.</H2>
+                <p className="text-[18px] m-0 text-on-dark-2">Assign a test to a course and watch results come in. Trainers get a score for each student on each test, based on the test cases they passed.</p>
+                <Link to="/login" className={btn('accent', 'md', 'self-start')}>Log in</Link>
               </div>
-              <div style={{ background: 'var(--panel-2)', borderRadius: 22, padding: 10 }}>
-                <div className="between small" style={{ padding: '12px 16px', color: '#9CA0AB' }}><span>Week 1 basics, results</span><span>Score</span></div>
+              <div className="bg-panel-2 rounded-lg p-2.5">
+                <div className="flex items-center justify-between gap-3 text-[13px] p-[12px_16px] text-panel-muted"><span>Week 1 basics, results</span><span>Score</span></div>
                 {ROWS.map(([name, score], i) => (
-                  <div key={name} className="lb-row" style={{ background: i === 0 ? '#2E3038' : 'transparent' }}>
+                  <div key={name} className="flex items-center gap-4 py-[15px] px-4 rounded-[14px]" style={{ background: i === 0 ? '#2E3038' : 'transparent' }}>
                     <Avatar name={name} size={32} />
-                    <span style={{ flexGrow: 1, fontWeight: 600 }}>{name}</span>
-                    <span className="mono">{score}</span>
+                    <span className="grow font-semibold">{name}</span>
+                    <span className="font-mono">{score}</span>
                   </div>
                 ))}
               </div>
             </div>
           </section>
 
-          <section id="plans" className="section stack" style={{ gap: 28, paddingTop: 0 }}>
-            <h2 className="h2" style={{ fontSize: 'clamp(36px,4.4vw,56px)' }}>Start free. Subscribe to retry.</h2>
-            <div className="grid g2" style={{ gap: 20 }}>
-              <article className="card stack" style={{ gap: 12, padding: 30 }}>
-                <span className="chip" style={{ alignSelf: 'flex-start' }}>Free</span>
-                <h3 className="h3" style={{ fontSize: 28 }}>One submission per question</h3>
-                <p className="ink2" style={{ margin: 0 }}>Run the sample tests as often as you like. When you submit, it's your one graded attempt for that question.</p>
-              </article>
-              <article className="card-dark stack" style={{ gap: 12, padding: 30 }}>
-                <span className="chip chip-pass" style={{ alignSelf: 'flex-start' }}>Subscribed</span>
-                <h3 className="h3" style={{ fontSize: 28 }}>Resubmit as many times as you need</h3>
-                <p style={{ margin: 0, color: '#C9CBD2' }}>Improve your answer and push your score up. Ask your admin to add a subscription to your account.</p>
+          <section id="plans" className="flex flex-col gap-7 pt-0">
+            <H2 className="text-[clamp(36px,4.4vw,56px)]">Start free. Subscribe to retry.</H2>
+            <div className="grid grid-cols-2 max-phone:grid-cols-1 gap-5">
+              <Card as="article" className="flex flex-col gap-3 p-7.5">
+                <Chip as="span" className="self-start">Free</Chip>
+                <H3 className="text-[28px]">One submission per question</H3>
+                <p className="text-ink-2 m-0">Run the sample tests as often as you like. When you submit, it's your one graded attempt for that question.</p>
+              </Card>
+              <article className="bg-panel text-cream rounded-lg flex flex-col gap-3 p-7.5">
+                <Chip tone="pass" className="self-start">Subscribed</Chip>
+                <H3 className="text-[28px]">Resubmit as many times as you need</H3>
+                <p className="m-0 text-on-dark-2">Improve your answer and push your score up. Ask your admin to add a subscription to your account.</p>
               </article>
             </div>
           </section>
 
-          <section className="section stack" style={{ alignItems: 'center', gap: 24, textAlign: 'center', paddingTop: 0 }}>
-            <h2 className="h2" style={{ fontSize: 'clamp(40px,6vw,72px)' }}>Ready to write some code?</h2>
-            <p className="ink2" style={{ margin: 0, fontSize: 19 }}>Your admin creates your account once you're enrolled.</p>
-            <Link to="/login" className="btn btn-accent btn-lg">Log in</Link>
+          <section className="flex flex-col items-center gap-6 text-center pt-0">
+            <H2 className="text-[clamp(40px,6vw,72px)]">Ready to write some code?</H2>
+            <p className="text-ink-2 m-0 text-[19px]">Your admin creates your account once you're enrolled.</p>
+            <Link to="/login" className={btn('accent', 'lg')}>Log in</Link>
           </section>
         </div>
       </main>

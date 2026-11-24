@@ -39,8 +39,8 @@ export function useAttempt(courseId, testId, test, uid) { // one timer per stude
 }
 
 export const TimerBar = ({ left }) => (
-  <div className={`warnbar ${left < 60000 ? 'urgent' : ''}`} role="timer" style={{ justifyContent: 'space-between' }}>
-    <span className="row" style={{ gap: 8 }}><Icon name="clock" size={18} />Time left</span>
-    <b className="mono" style={{ fontSize: 20 }}>{clock(left)}</b>
+  <div className={`rounded-[14px] bg-warn-soft text-warn py-3 px-4 font-semibold text-[14px] flex gap-2.5 items-center ${left < 60000 ? 'bg-accent-soft! text-accent-ink!' : ''} justify-between`} role="timer">
+    <span className="flex items-center gap-2"><Icon name="clock" size={18} />Time left</span>
+    <b className="font-mono text-[20px]">{clock(left)}</b>
   </div>
 );

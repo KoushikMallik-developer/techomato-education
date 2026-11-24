@@ -36,6 +36,9 @@ export const KIND_LABEL = {
   copy: 'Tried to copy',
   cut: 'Tried to cut',
   'right-click': 'Right-clicked',
+  'blocked-key': 'Pressed a blocked shortcut (developer tools, view source, save or print)',
+  'screenshot-key': 'Pressed the Print Screen key',
+  devtools: 'Developer tools seem to be open',
 };
 const quiet = k => k === 'start' || k === 'finished' || k.endsWith('-cleared'); // these are just the story of the exam, not flags
 const FLAG_KINDS = Object.keys(KIND_LABEL).filter(k => !quiet(k));
@@ -50,7 +53,11 @@ export const PROBLEM_TEXT = {
   'mic-lost': 'Your microphone stopped or is muted. Unmute it to continue.',
 };
 export const COUNTDOWN_TEXT = { 'no-face': 'No face detected.', 'camera-black': 'Your camera is covered or too dark.', 'camera-lost': 'Your camera stopped.' };
-export const WARN_TEXT = { 'multiple-faces': 'More than one face detected.', 'looking-away': 'You are looking away from the screen.' };
+export const WARN_TEXT = { 'multiple-faces': 'More than one face detected.', 'looking-away': 'You are looking away from the screen.', devtools: 'Developer tools seem to be open. Close them.' };
+// Camera names of software that feeds a pre-recorded or edited picture instead of the real camera.
+const VIRTUAL_CAM = /obs|virtual|manycam|snap camera|xsplit|droidcam|iriun|epoccam|camo|nvidia broadcast|splitcam|vcam|webcamoid/i;
+// Shortcuts that open developer tools, view the page source, save or print it.
+const BLOCKED_KEY = e => e.key === 'F12' || ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'u' || e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'p' || (e.shiftKey && 'ijc'.includes(e.key.toLowerCase()))));
 
 const SNAP_EVERY = 120000; // a photo every 2 minutes keeps a class inside the free Firestore write quota
 const LIMIT = { proctor: 3000, snaps: 200 }; // per student per test; firestore.rules enforces the same numbers. Events are one per episode, not per frame.
@@ -116,7 +123,7 @@ export function inspectFrame(det, video) {
 }
 
 // Call from a click (fullscreen needs a user gesture). Throws a readable error, and leaves nothing running, if any check fails.
-export async function start(uid, courseId, testId, home, questionIds = []) { // the same test in another course is a separate exam
+export async function start(uid, courseId, testId, home, questionIds = [], consent = '') { // the same test in another course is a separate exam
   if (active(testId)) return;
   stop();
   const cleanups = [];
@@ -148,6 +155,8 @@ export async function start(uid, courseId, testId, home, questionIds = []) { // 
     fail(e.name === 'NotAllowedError' ? 'Allow camera and microphone access, then try again.' : e.name === 'NotFoundError' ? 'No camera or microphone found. This test needs both.' : 'Your camera or microphone could not be opened. Close other apps using them and try again.');
   }
   cleanups.push(() => stream.getTracks().forEach(t => t.stop()));
+  const camName = stream.getVideoTracks()[0]?.label || '';
+  if (VIRTUAL_CAM.test(camName)) fail(`The camera "${camName}" looks like virtual camera software. Close it and use your real camera.`);
   const video = Object.assign(document.createElement('video'), { srcObject: stream, muted: true, playsInline: true });
   video.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
   document.body.append(video);
@@ -172,7 +181,7 @@ export async function start(uid, courseId, testId, home, questionIds = []) { // 
   const key = `tk-proctor-${uid}-${courseId}-${testId}`;
   let restarted = false;
   try { restarted = !!sessionStorage.getItem(key); sessionStorage.setItem(key, '1'); } catch { /* private mode */ }
-  try { await put('proctor', { kind: restarted ? 'restart' : 'start' }, true); } catch { fail('Proctoring could not save its records, so the test cannot start. Tell your trainer (Firestore rules may not be deployed).'); }
+  try { await put('proctor', { kind: restarted ? 'restart' : 'start', ...(consent ? { detail: `Agreed to: ${consent}` } : {}) }, true); } catch { fail('Proctoring could not save its records, so the test cannot start. Tell your trainer (Firestore rules may not be deployed).'); }
 
   const log = (kind, detail) => put('proctor', { kind, ...(detail ? { detail } : {}) }).catch(() => {}); // after start, a failed log must not break the test
   const snap = reason => {
@@ -211,6 +220,13 @@ export async function start(uid, courseId, testId, home, questionIds = []) { // 
   on(window, 'blur', leave);
   on(document, 'visibilitychange', () => document.hidden && leave());
   on(document, 'fullscreenchange', () => flag('left-fullscreen', !document.fullscreenElement));
+  // keyboard lock (Chrome, in fullscreen): Esc, Tab, F5 and the window shortcuts go to the exam, so Esc needs a long press to leave
+  navigator.keyboard?.lock?.(['Escape', 'Tab', 'F5', 'F11', 'KeyW', 'KeyT', 'KeyN', 'KeyL', 'MetaLeft', 'MetaRight']).catch(() => {});
+  cleanups.push(() => navigator.keyboard?.unlock?.());
+  on(document, 'keydown', e => { if (BLOCKED_KEY(e)) { e.preventDefault(); log('blocked-key', e.key); } });
+  on(document, 'keyup', e => { if (e.key === 'PrintScreen') { navigator.clipboard?.writeText('').catch(() => {}); log('screenshot-key'); } });
+  // shortcut: open developer tools docked to the window shrink it, which this notices; undocked ones are not caught
+  every(() => warn('devtools', Math.max(outerWidth - innerWidth, outerHeight - innerHeight) > 200), 1500);
   ['paste', 'copy', 'cut', 'contextmenu'].forEach(t => on(document, t, e => { e.preventDefault(); log(t === 'contextmenu' ? 'right-click' : t); }));
   stream.getVideoTracks().forEach(t => { on(t, 'ended', () => { trackLost = true; }); on(t, 'mute', () => { trackLost = true; }); on(t, 'unmute', () => { trackLost = false; }); });
   stream.getAudioTracks().forEach(t => { on(t, 'ended', () => flag('mic-lost', true)); on(t, 'mute', () => flag('mic-lost', true)); on(t, 'unmute', () => flag('mic-lost', false)); });
@@ -246,14 +262,15 @@ export async function start(uid, courseId, testId, home, questionIds = []) { // 
   set({ testId, courseId, home, problems: [], countdown: null, why: null, warnings: [], submitting: false, ended: null });
 }
 
-// Ends the exam: saves what is on screen, gives every unanswered question an empty zero-score submission, records it, and leaves.
-async function autoSubmit(reason) {
-  if (!s || s.ending) return;
-  s.ending = true;
-  const { uid, courseId, testId, questionIds, log, put } = s;
-  set({ countdown: null, submitting: true });
-  log('auto-submit-started', reason);
-  try { await (inflight || submitCurrent?.()); } catch { /* the empty-submission step below still runs */ }
+// The moment a student ended the test, with their flag count, so classmates can be ranked by score, flags and time without reading anyone's proctor log.
+// The first write wins (rules refuse an update). shortcut: the flag count is written by the student's browser, so it can be faked; the trainer's own proctor log is the real record.
+export const recordFinish = async (uid, courseId, testId, proctored) => {
+  const flags = proctored ? await flagCount(uid, courseId, testId).catch(() => 0) : 0;
+  await setDoc(doc(db, 'finishes', `${uid}_${courseId}_${testId}`), { userId: uid, courseId, testId, flags, at: Date.now() }).catch(() => {});
+};
+
+// Gives every unanswered question an empty zero-score submission. Once every question has a submission the test is over and cannot be opened again.
+export async function fillUnanswered(uid, courseId, testId, questionIds) {
   for (const qid of questionIds) {
     try {
       const ref = doc(db, 'submissions', `${uid}_${courseId}_${testId}_${qid}`);
@@ -262,7 +279,19 @@ async function autoSubmit(reason) {
       if (q.exists()) await setDoc(ref, { userId: uid, courseId, testId, questionId: qid, code: '', passed: 0, total: q.data().tests.length, auto: true, at: serverTimestamp() });
     } catch { /* one failed question must not stop the rest */ }
   }
+}
+
+// Ends the exam: saves what is on screen, gives every unanswered question an empty zero-score submission, records it, and leaves.
+async function autoSubmit(reason) {
+  if (!s || s.ending) return;
+  s.ending = true;
+  const { uid, courseId, testId, questionIds, log, put } = s;
+  set({ countdown: null, submitting: true });
+  log('auto-submit-started', reason);
+  try { await (inflight || submitCurrent?.()); } catch { /* the empty-submission step below still runs */ }
+  await fillUnanswered(uid, courseId, testId, questionIds);
   await put('proctor', { kind: 'auto-submitted', detail: reason }, true).catch(() => {}); // awaited: it is what keeps the exam ended
+  await recordFinish(uid, courseId, testId, true);
   stop(false);
   set({ ended: reason === 'time-up' ? 'Your time is up, so your exam was submitted automatically.' : `${COUNTDOWN_TEXT[reason] || 'A problem with your camera'} The 10 second countdown ran out, so your exam was submitted automatically. Your trainer can see what happened.` });
   location.hash = '#/';

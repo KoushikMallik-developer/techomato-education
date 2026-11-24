@@ -7,11 +7,15 @@ import Login from './pages/public/Login.jsx';
 import { Help, Institutes, Legal, Pricing } from './pages/public/Public.jsx';
 import { AdminCourses, AdminOverview, AdminPayments, AdminUsers } from './pages/staff/Admin.jsx';
 import TestResults from './pages/staff/TestResults.jsx';
-import { TrainerCourses, TrainerResults, Questions, QuestionDetail, NewQuestion, TestsPage, NewTest } from './pages/staff/Trainer.jsx';
+import { TrainerDashboard, TrainerCourses } from './pages/staff/Trainer.jsx';
+import { TrainerResults } from './pages/staff/TrainerResults.jsx';
+import { Questions, QuestionDetail, NewQuestion } from './pages/staff/Questions.jsx';
+import { TestsPage, NewTest } from './pages/staff/Tests.jsx';
 import CourseDetail from './pages/staff/CourseDetail.jsx';
 import { Dashboard } from './pages/student/Dashboard.jsx';
 import { Courses, CourseView, TestView } from './pages/student/Courses.jsx';
 import { Solve } from './pages/student/Solve.jsx';
+import { StudentResults, StudentTestResult, StudentTests } from './pages/student/TestsResults.jsx';
 import { Leaderboard } from './pages/student/Leaderboard.jsx';
 import { Playground } from './pages/student/Playground.jsx';
 import { Profile } from './pages/student/Profile.jsx';
@@ -24,7 +28,7 @@ const home = <Route path="*" element={<Navigate to="/" replace />} />;
 export default function App() {
   const me = useMe();
   let body;
-  if (me === undefined) body = <p style={{ padding: 32 }} className="muted">Loading…</p>;
+  if (me === undefined) body = <p className="text-muted p-8">Loading…</p>;
   else if (!me) body = (
     <Routes>
       <Route path="/" element={<Landing />} />
@@ -54,7 +58,8 @@ export default function App() {
   );
   else if (me.role === 'trainer') body = (
     <Routes>
-      <Route path="/" element={page('Courses', <TrainerCourses />)} />
+      <Route path="/" element={page('Dashboard', <TrainerDashboard />)} />
+      <Route path="/courses" element={page('Courses', <TrainerCourses />)} />
       <Route path="/results" element={page('Results', <TrainerResults />)} />
       <Route path="/results/:courseId/:testId" element={page('Test results', <TestResults />)} />
       <Route path="/questions" element={page('Question bank', <Questions />)} />
@@ -75,6 +80,9 @@ export default function App() {
       <Route path="/" element={page('Dashboard', <Dashboard />)} />
       <Route path="/courses" element={page('Courses', <Courses />)} />
       <Route path="/course/:id" element={page('Course', <CourseView />)} />
+      <Route path="/tests" element={page('Tests', <StudentTests />)} />
+      <Route path="/results" element={page('Results', <StudentResults />)} />
+      <Route path="/results/:courseId/:testId" element={page('Test results', <StudentTestResult />)} />
       <Route path="/test/:courseId/:testId" element={page('Test', <TestView />)} />
       <Route path="/solve/:courseId/:testId/:qid" element={page('Question', <Solve />)} />
       <Route path="/playground" element={page('Playground', <Playground />)} />

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dailyOf, dayIndex, nextStreak, scoreTable, perWeek, joinSeries, histogram, questionStats, perDay } from './score.js';
+import { dailyOf, dayIndex, nextStreak, scoreTable, perWeek, joinSeries, histogram, questionStats, perDay, inCourse, activityByDay, dayKey, byRank } from './score.js';
 
 test('sums passed cases; unattempted tests are null; unsubmitted questions still count in total', () => {
   const rows = scoreTable(
@@ -67,7 +67,7 @@ test('perDay counts submissions per calendar day, oldest first', () => {
   assert.deepEqual(perDay([now, now - 1000, now - day, now - 30 * day, undefined], 3, now), [0, 1, 2]);
 });
 
-import { windowOf, leftMs, clock, readiness, newCode, testCode, courseCode, langsOf, langOfSub, typeLabel } from './schedule.js';
+import { windowOf, shouldTell, statusOf, leftMs, clock, readiness, newCode, testCode, courseCode, langsOf, langOfSub, typeLabel } from './schedule.js';
 test('windowOf: soon before publish, closed after end, open between', () => {
   const t = { publishAt: 100, endAt: 200 };
   assert.deepEqual([windowOf(t, 50), windowOf(t, 150), windowOf(t, 201), windowOf({}, 5)], ['soon', 'open', 'closed', 'open']);
@@ -108,4 +108,37 @@ test('languages: a test allows all unless it lists some; old answers keep their 
   assert.equal(langOfSub({}, { env: 'js' }), 'js');
   assert.equal(langOfSub({}, { env: 'code' }), 'python');
   assert.equal(typeLabel({ env: 'web' }), 'HTML / CSS / JS');
+});
+
+test('a submission counts in the course it was made in; old ones with no course count in every course', () => {
+  assert.equal(inCourse({ courseId: 'c1' }, 'c1'), true);
+  assert.equal(inCourse({ courseId: 'c1' }, 'c2'), false);
+  assert.equal(inCourse({}, 'c2'), true);
+});
+
+test('a test is a draft until it is complete and in a course', () => {
+  const t = { title: 'T', questionIds: ['q'], publishAt: 1, endAt: Date.now() + 1e6, durationMin: 30 };
+  assert.equal(statusOf(t, new Set(['q']), 0), 'draft');
+  assert.equal(statusOf(t, new Set([]), 1), 'draft'); // its question was deleted
+  assert.equal(statusOf(t, new Set(['q']), 1), 'open');
+  assert.equal(statusOf({ ...t, draft: true }, new Set(['q']), 1), 'draft');
+});
+
+test('students are told about a test only when it is published, never for a draft', () => {
+  assert.equal(shouldTell('none', true, false), false);
+  assert.equal(shouldTell('new', true, false), true);
+  assert.equal(shouldTell('new', true, true), false);
+  assert.equal(shouldTell('all', true, true), true);
+  assert.equal(shouldTell('all', false, true), false); // a course the test was removed from
+});
+
+test('activityByDay counts answers per local day, for numbers and Timestamps, and skips ones without a time', () => {
+  const t = new Date(2026, 10, 22, 15).getTime();
+  const m = activityByDay([{ at: t }, { at: { toMillis: () => t + 1000 } }, { at: t - 864e5 }, {}]);
+  assert.deepEqual(m, { [dayKey(new Date(t))]: 2, [dayKey(new Date(t - 864e5))]: 1 });
+});
+
+test('byRank: higher score first, then fewer flags, then the earlier finish', () => {
+  const rows = [{ n: 'late', pct: 90, flags: 0, at: 9 }, { n: 'flagged', pct: 90, flags: 2, at: 1 }, { n: 'top', pct: 100, flags: 5, at: 5 }, { n: 'early', pct: 90, flags: 0, at: 2 }];
+  assert.deepEqual(rows.sort(byRank).map(r => r.n), ['top', 'early', 'late', 'flagged']);
 });

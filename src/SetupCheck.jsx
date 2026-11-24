@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { faceDetector, inspectFrame } from './proctor.js';
 import { judge } from './precheck.js';
-import { Icon } from './ui.jsx';
+import { Icon, btn } from './ui.jsx';
 
 // Live camera preview with a checklist (camera, lighting, face, position, microphone, screen) shown before a proctored exam.
 // onReady(true) fires once every line has passed for 2 seconds in a row. stopRef.current() releases the camera.
@@ -41,20 +41,19 @@ export default function SetupCheck({ onReady, stopRef }) {
 
   const live = phase === 'live';
   return (
-    <div className="stack" style={{ gap: 12 }}>
-      <b>Check your setup</b>
+    <div className="flex flex-col gap-3">
       {phase === 'idle' || phase === 'error' ? (
-        <div className="stack" style={{ gap: 8 }}>
-          {err && <p className="err" role="alert" style={{ margin: 0 }}>{err}</p>}
-          <div><button className="btn btn-ink" onClick={begin}>{phase === 'error' ? 'Try again' : 'Check my camera'}</button></div>
+        <div className="flex flex-col gap-2">
+          {err && <p className="text-accent-ink text-[13px] font-semibold m-0" role="alert">{err}</p>}
+          <div><button className={btn('ink', 'lg')} onClick={begin}>{phase === 'error' ? 'Try again' : 'Check my hardware'}</button></div>
         </div>
-      ) : phase === 'loading' ? <span className="muted"><span className="spinner" /> Opening camera and loading the face check…</span> : null}
-      <div className="row" style={{ gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', ...(live ? {} : { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 }) }}> {/* kept in the page while loading so the camera has somewhere to play */}
-        <video ref={video} muted playsInline style={{ width: 320, height: 240, borderRadius: 12, background: '#000', transform: 'scaleX(-1)' }} />
-        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8, flex: 1, minWidth: 220 }} aria-live="polite">
+      ) : phase === 'loading' ? <span className="text-muted"><span className="w-4 h-4 rounded-full border-[2.5px] border-r-transparent animate-spin-fast" /> Opening camera and loading the face check…</span> : null}
+      <div className="grid gap-5 grid-cols-[minmax(0,340px)_1fr] max-tablet:grid-cols-1 items-start" style={{ ...(live ? {} : { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 }) }}> {/* kept in the page while loading so the camera has somewhere to play */}
+        <video className="w-full aspect-[4/3] rounded-[12px] bg-[#000] object-cover [transform:scaleX(-1)]" ref={video} muted playsInline />
+        <ul className="m-0 p-0 list-none! grid gap-3 grid-cols-2 max-phone:grid-cols-1 content-start" aria-live="polite">
           {lines.map(c => (
-            <li key={c.key} className="row" style={{ gap: 8, alignItems: 'flex-start', color: c.ok ? 'var(--pass)' : 'var(--warn)' }}>
-              <Icon name={c.ok ? 'check' : 'x'} size={18} stroke={2.4} /><span style={{ color: 'var(--ink)' }}>{c.text}</span>
+            <li key={c.key} className="flex gap-2 items-start rounded-xl border border-line bg-surface p-3" style={{ color: c.ok ? 'var(--pass)' : 'var(--warn)' }}>
+              <Icon name={c.ok ? 'check' : 'x'} size={18} stroke={2.4} /><span className="text-ink">{c.text}</span>
             </li>
           ))}
         </ul>

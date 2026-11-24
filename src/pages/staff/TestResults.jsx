@@ -7,7 +7,7 @@ import { useMe } from '../../auth.jsx';
 import { flagMap } from '../../proctor.js';
 import { histogram, perDay, questionStats, scoreTable } from '../../score.js';
 import { BarChart, ChartCard } from '../../Charts.jsx';
-import { Avatar, Empty, Icon, Loading, plural, useLoad } from '../../ui.jsx';
+import { Avatar, Empty, Icon, Loading, plural, useLoad, btn, Card, Chip, Bar, H2, H3, Back } from '../../ui.jsx';
 import { ResultModal } from './CourseDetail.jsx';
 
 const ms = t => t?.toMillis?.() ?? t; // Firestore timestamp or plain number
@@ -38,8 +38,8 @@ export default function TestResults() {
     return { course, test, students, bank, subs: subs.filter(s => course.students.includes(s.userId) && inCourse(s, courseId)), flags };
   }, [courseId, testId]);
   if (!d) return <Loading />;
-  if (d.gone) return <Empty title="Test not found" action={<Link to="/results" className="btn btn-ink">Back to results</Link>} />;
-  if (d.denied) return <Empty title="This is not your test" body="You can only see results of tests you wrote, in courses you teach." action={<Link to="/results" className="btn btn-ink">Back to results</Link>} />;
+  if (d.gone) return <Empty title="Test not found" action={<Link to="/results" className={btn('ink')}>Back to results</Link>} />;
+  if (d.denied) return <Empty title="This is not your test" body="You can only see results of tests you wrote, in courses you teach." action={<Link to="/results" className={btn('ink')}>Back to results</Link>} />;
 
   const { course, test, students, bank, subs, flags } = d;
   const qs = test.questionIds.map(id => bank.find(q => q.id === id)).filter(Boolean);
@@ -82,34 +82,34 @@ export default function TestResults() {
   const filtering = f.name || f.status !== 'all' || f.score !== 'all' || f.last !== 'all' || f.flags !== 'all';
   const set = patch => setF({ ...f, ...patch });
   const Th = ({ k, children }) => (
-    <th aria-sort={sort.key === k ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" className="th-sort" onClick={() => setSort({ key: k, dir: sort.key === k ? -sort.dir : 1 })}>{children}<span aria-hidden="true">{sort.key === k ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}</span></button>
+    <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line" aria-sort={sort.key === k ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="border-0 bg-transparent p-0 font-semibold text-inherit cursor-pointer whitespace-nowrap hover:text-ink" onClick={() => setSort({ key: k, dir: sort.key === k ? -sort.dir : 1 })}>{children}<span aria-hidden="true">{sort.key === k ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}</span></button>
     </th>
   );
-  const Sel = ({ k, label, options }) => <select className="input th-filter" aria-label={`Filter by ${label}`} value={f[k]} onChange={e => set({ [k]: e.target.value })}>{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
+  const Sel = ({ k, label, options }) => <select className="rounded-xl border-[1.5px] border-field-line bg-surface focus:border-ink min-h-[38px] text-[13px] font-medium px-2 min-w-0 w-full" aria-label={`Filter by ${label}`} value={f[k]} onChange={e => set({ [k]: e.target.value })}>{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <Link to="/results" className="row small" style={{ gap: 4, fontWeight: 600, textDecoration: 'none' }}><Icon name="back" size={16} />All results</Link>
-      <div className="card stack" style={{ gap: 10 }}>
-        <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-          <span className="chip">{course.title}</span>
-          {test.proctored && <span className="chip chip-proctor"><Icon name="lock" size={14} />Proctored</span>}
-          <span className="chip">{plural(qs.length, 'question')}</span>
+    <div className="flex flex-col gap-5">
+      <Back to="/results">All results</Back>
+      <Card className="flex flex-col gap-2.5">
+        <div className="flex items-center flex-wrap gap-2">
+          <Chip as="span">{course.title}</Chip>
+          {test.proctored && <Chip tone="proctor"><Icon name="lock" size={14} />Proctored</Chip>}
+          <Chip as="span">{plural(qs.length, 'question')}</Chip>
         </div>
-        <h2 className="h2" style={{ fontSize: 36 }}>{test.title}</h2>
-        <div className="grid g4">
+        <H2 className="text-[36px]">{test.title}</H2>
+        <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
           {[
             [`${attempted.length}/${students.length}`, 'Students attempted'],
             [rows.filter(r => r.status === 'done').length, 'Finished every question'],
             [avg === null ? '—' : `${avg}%`, 'Average score'],
             [pcts.length ? `${Math.max(...pcts)}% / ${Math.min(...pcts)}%` : '—', 'Highest / lowest'],
-          ].map(([n, l]) => <div key={l} style={{ background: 'var(--paper)', borderRadius: 14, padding: '12px 16px' }}><div className="big" style={{ fontSize: 26 }}>{n}</div><div className="small muted">{l}</div></div>)}
+          ].map(([n, l]) => <div className="bg-paper rounded-[14px] p-[12px_16px]" key={l}><div className="big font-display font-extrabold tracking-[-.03em] leading-none text-[26px]">{n}</div><div className="text-[13px] text-muted">{l}</div></div>)}
         </div>
-        {test.proctored && <p className="small muted" style={{ margin: 0 }}>{flagged ? `${plural(flagged, 'student')} flagged by proctoring.` : 'No student was flagged by proctoring.'}</p>}
-      </div>
+        {test.proctored && <p className="text-[13px] text-muted m-0">{flagged ? `${plural(flagged, 'student')} flagged by proctoring.` : 'No student was flagged by proctoring.'}</p>}
+      </Card>
 
-      <div className="grid g2">
+      <div className="grid gap-4 grid-cols-2 max-phone:grid-cols-1">
         <ChartCard title="Score spread" hint={pcts.length ? 'Students by their score on this test.' : 'Nobody has attempted this test yet.'}>
           <BarChart data={['0-19%', '20-39%', '40-59%', '60-79%', '80-100%'].map((label, i) => ({ label, value: spread[i] }))} label="Students by score" color="var(--pass-strong)" />
         </ChartCard>
@@ -118,18 +118,18 @@ export default function TestResults() {
         </ChartCard>
         <ChartCard title="Average score per question" hint="Each student's best attempt counts. Shows which questions were hardest.">
           <BarChart data={qs.map((q, i) => ({ label: `Q${i + 1}`, value: stats[q.id].avg ?? 0 }))} max={100} label="Average score per question" color="var(--warn)" />
-          <ul className="small" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 2 }}>
+          <ul className="text-[13px] m-0 pl-4.5 grid gap-0.5">
             {qs.map((q, i) => <li key={q.id}><b>Q{i + 1}</b> {q.title}: {stats[q.id].avg === null ? 'no attempts' : `${stats[q.id].avg}% from ${plural(stats[q.id].students, 'student')}`}</li>)}
           </ul>
         </ChartCard>
         <ChartCard title="Who took it" hint="Students split by how far they got.">
-          <div className="stack" style={{ gap: 12 }}>
+          <div className="flex flex-col gap-3">
             {['done', 'partial', 'none'].map(k => {
               const n = rows.filter(r => r.status === k).length;
               return (
-                <div key={k} className="stack" style={{ gap: 4 }}>
-                  <div className="between small"><span>{STATUS[k]}</span><b>{n}</b></div>
-                  <div className="bar" aria-hidden="true"><span style={{ width: `${students.length ? (100 * n) / students.length : 0}%`, background: k === 'done' ? 'var(--pass-strong)' : k === 'partial' ? 'var(--warn)' : 'var(--field-line)' }} /></div>
+                <div key={k} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-3 text-[13px]"><span>{STATUS[k]}</span><b>{n}</b></div>
+                  <Bar pct={students.length ? (100 * n) / students.length : 0} color={k === 'done' ? 'var(--pass-strong)' : k === 'partial' ? 'var(--warn)' : 'var(--field-line)'} aria-hidden="true" />
                 </div>
               );
             })}
@@ -137,39 +137,39 @@ export default function TestResults() {
         </ChartCard>
       </div>
 
-      <section className="card stack" style={{ gap: 12 }}>
-        <div className="between" style={{ flexWrap: 'wrap' }}>
-          <h3 className="h3" style={{ fontSize: 20 }}>Student by student</h3>
-          <span className="small muted">Showing {shown.length} of {students.length}{filtering && <> · <button type="button" className="link-btn" onClick={() => setF({ name: '', status: 'all', score: 'all', last: 'all', flags: 'all' })}>Clear filters</button></>}</span>
+      <Card as="section" className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <H3 className="text-[20px]">Student by student</H3>
+          <span className="text-[13px] text-muted">Showing {shown.length} of {students.length}{filtering && <> · <button type="button" className="border-0 bg-transparent p-0 font-semibold underline text-ink cursor-pointer" onClick={() => setF({ name: '', status: 'all', score: 'all', last: 'all', flags: 'all' })}>Clear filters</button></>}</span>
         </div>
-        <div className="scroll-x">
-          <table>
+        <div className="overflow-x-auto">
+          <table className="border-collapse w-full">
             <thead>
-              <tr><Th k="name">Student</Th><Th k="status">Progress</Th><Th k="score">Score</Th><Th k="last">Last submission</Th>{test.proctored && <Th k="flags">Flags</Th>}<th><span className="sr">Open</span></th></tr>
-              <tr className="filter-row">
-                <th><input className="input th-filter" type="search" aria-label="Search students by name or email" placeholder="Search name or email" value={f.name} onChange={e => set({ name: e.target.value })} /></th>
-                <th><Sel k="status" label="progress" options={[['all', 'All'], ['done', 'Finished'], ['partial', 'In progress'], ['none', 'Not attempted']]} /></th>
-                <th><Sel k="score" label="score" options={[['all', 'All'], ['none', 'No score'], ['low', 'Below 40%'], ['mid', '40% to 69%'], ['high', '70% and up']]} /></th>
-                <th><Sel k="last" label="last submission" options={[['all', 'Any time'], ['today', 'Last 24 hours'], ['week', 'Last 7 days'], ['older', 'Older than 7 days'], ['never', 'Never']]} /></th>
-                {test.proctored && <th><Sel k="flags" label="flags" options={[['all', 'All'], ['flagged', 'Flagged'], ['clean', 'No flags']]} /></th>}
-                <th />
+              <tr><Th k="name">Student</Th><Th k="status">Progress</Th><Th k="score">Score</Th><Th k="last">Last submission</Th>{test.proctored && <Th k="flags">Flags</Th>}<th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><span className="sr-only">Open</span></th></tr>
+              <tr className="[:where(&)_th]:pt-1.5 [:where(&)_th]:px-3 [:where(&)_th]:pb-2.5 [:where(&)_th]:border-b [:where(&)_th]:border-line">
+                <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><input className="rounded-xl border-[1.5px] border-field-line bg-surface focus:border-ink min-h-[38px] text-[13px] font-medium px-2 min-w-0 w-full" type="search" aria-label="Search students by name or email" placeholder="Search name or email" value={f.name} onChange={e => set({ name: e.target.value })} /></th>
+                <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><Sel k="status" label="progress" options={[['all', 'All'], ['done', 'Finished'], ['partial', 'In progress'], ['none', 'Not attempted']]} /></th>
+                <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><Sel k="score" label="score" options={[['all', 'All'], ['none', 'No score'], ['low', 'Below 40%'], ['mid', '40% to 69%'], ['high', '70% and up']]} /></th>
+                <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><Sel k="last" label="last submission" options={[['all', 'Any time'], ['today', 'Last 24 hours'], ['week', 'Last 7 days'], ['older', 'Older than 7 days'], ['never', 'Never']]} /></th>
+                {test.proctored && <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><Sel k="flags" label="flags" options={[['all', 'All'], ['flagged', 'Flagged'], ['clean', 'No flags']]} /></th>}
+                <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line" />
               </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? <tr><td colSpan={test.proctored ? 6 : 5}><span className="muted">No students match these filters.</span></td></tr> : shown.map(r => (
+              {shown.length === 0 ? <tr><td className="p-3 border-b border-line text-[15px]" colSpan={test.proctored ? 6 : 5}><span className="text-muted">No students match these filters.</span></td></tr> : shown.map(r => (
                 <tr key={r.student.id}>
-                  <td><div className="row" style={{ gap: 10 }}><Avatar name={r.student.name} size={32} /><div><b>{r.student.name}</b><div className="small muted">{r.student.email}</div></div></div></td>
-                  <td><span className={`chip ${r.status === 'done' ? 'chip-pass' : r.status === 'partial' ? 'chip-warn' : ''}`}>{STATUS[r.status]}</span><div className="small muted">{r.tried}/{qs.length} questions{r.auto && ' · auto-submitted'}</div></td>
-                  <td>{r.pct === null ? <span className="muted">—</span> : <><b>{r.pct}%</b><div className="small muted">{r.cell.passed}/{r.cell.total} test cases</div></>}</td>
-                  <td>{r.last ? when(r.last) : <span className="muted">Never</span>}</td>
-                  {test.proctored && <td>{r.flags ? <span className="chip chip-warn">{r.flags} flags</span> : <span className="chip chip-pass">No flags</span>}</td>}
-                  <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => setView({ student: r.student, test })}>View answers</button></td>
+                  <td className="p-3 border-b border-line text-[15px]"><div className="flex items-center gap-2.5"><Avatar name={r.student.name} size={32} /><div><b>{r.student.name}</b><div className="text-[13px] text-muted">{r.student.email}</div></div></div></td>
+                  <td className="p-3 border-b border-line text-[15px]"><Chip as="span" className={`${r.status === 'done' ? 'bg-pass-soft! text-pass!' : r.status === 'partial' ? 'bg-warn-soft! text-warn!' : ''}`}>{STATUS[r.status]}</Chip><div className="text-[13px] text-muted">{r.tried}/{qs.length} questions{r.auto && ' · auto-submitted'}</div></td>
+                  <td className="p-3 border-b border-line text-[15px]">{r.pct === null ? <span className="text-muted">—</span> : <><b>{r.pct}%</b><div className="text-[13px] text-muted">{r.cell.passed}/{r.cell.total} test cases</div></>}</td>
+                  <td className="p-3 border-b border-line text-[15px]">{r.last ? when(r.last) : <span className="text-muted">Never</span>}</td>
+                  {test.proctored && <td className="p-3 border-b border-line text-[15px]">{r.flags ? <Chip tone="warn">{r.flags} flags</Chip> : <Chip tone="pass">No flags</Chip>}</td>}
+                  <td className="p-3 border-b border-line text-[15px]"><button type="button" className={btn('ghost', 'sm')} onClick={() => setView({ student: r.student, test })}>View answers</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </section>
+      </Card>
       {view && <ResultModal courseId={courseId} student={view.student} test={view.test} qs={bank} subs={subs} onClose={() => setView(null)} />}
     </div>
   );

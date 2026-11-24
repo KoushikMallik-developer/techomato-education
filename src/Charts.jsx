@@ -1,17 +1,18 @@
 // Small dependency-free SVG charts. Every chart prints its numbers, so nothing relies on color alone.
+import { Card, H3 } from './ui.jsx';
 const W = 520, H = 190, PAD = { l: 30, r: 10, t: 22, b: 28 };
 const niceMax = v => { const m = Math.max(v, 1); const p = 10 ** Math.floor(Math.log10(m)); return Math.ceil(m / p) * p; };
 
 function Frame({ label, max, children }) {
   const ticks = max % 2 ? [0, max] : [0, max / 2, max]; // whole numbers only
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label} style={{ display: 'block', overflow: 'visible' }}>
+    <svg className="block [overflow:visible]" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
       {ticks.map(t => {
         const y = PAD.t + (1 - t / max) * (H - PAD.t - PAD.b);
         return (
           <g key={t}>
-            <line x1={PAD.l} x2={W - PAD.r} y1={y} y2={y} style={{ stroke: 'var(--line)' }} strokeWidth="1" />
-            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="11" style={{ fill: 'var(--muted)' }}>{Math.round(t)}</text>
+            <line className="[stroke:var(--line)]" x1={PAD.l} x2={W - PAD.r} y1={y} y2={y} strokeWidth="1" />
+            <text className="[fill:var(--muted)]" x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="11">{Math.round(t)}</text>
           </g>
         );
       })}
@@ -30,8 +31,8 @@ export function BarChart({ data, label, color = 'var(--accent)', max = niceMax(M
         return (
           <g key={d.label + i}>
             <rect x={x} y={d.value ? y : PAD.t + ih - 2} width={bw} height={d.value ? h : 2} rx="4" style={{ fill: d.value ? color : 'var(--line)' }} />
-            {d.value > 0 && <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="12" fontWeight="700" style={{ fill: 'var(--ink)' }}>{d.value}</text>}
-            <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)' }}>{d.label}</text>
+            {d.value > 0 && <text className="[fill:var(--ink)]" x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="12" fontWeight="700">{d.value}</text>}
+            <text className="[fill:var(--muted)]" x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="11">{d.label}</text>
           </g>
         );
       })}
@@ -48,16 +49,16 @@ export function LineChart({ data, label, color = 'var(--pass-strong)' }) {
     <Frame label={`${label}: ${data.map(d => `${d.label} ${d.value}`).join(', ')}`} max={max}>
       {pts.length > 1 && <path d={`${path} L${last[0]} ${PAD.t + ih} L${pts[0][0]} ${PAD.t + ih} Z`} style={{ fill: color }} opacity="0.12" />}
       <path d={path} fill="none" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" style={{ stroke: color }} />
-      {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="3.5" style={{ fill: 'var(--surface)', stroke: color }} strokeWidth="2" />)}
-      {data.map((d, i) => (i % Math.ceil(data.length / 8) === 0 || i === data.length - 1) && <text key={i} x={pts[i][0]} y={H - 8} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)' }}>{d.label}</text>)}
-      {last && <text x={last[0]} y={last[1] - 10} textAnchor="end" fontSize="12" fontWeight="700" style={{ fill: 'var(--ink)' }}>{data[data.length - 1].value}</text>}
+      {pts.map((p, i) => <circle className="[fill:var(--surface)]" key={i} cx={p[0]} cy={p[1]} r="3.5" style={{ stroke: color }} strokeWidth="2" />)}
+      {data.map((d, i) => (i % Math.ceil(data.length / 8) === 0 || i === data.length - 1) && <text className="[fill:var(--muted)]" key={i} x={pts[i][0]} y={H - 8} textAnchor="middle" fontSize="11">{d.label}</text>)}
+      {last && <text className="[fill:var(--ink)]" x={last[0]} y={last[1] - 10} textAnchor="end" fontSize="12" fontWeight="700">{data[data.length - 1].value}</text>}
     </Frame>
   );
 }
 
 export const ChartCard = ({ title, hint, children }) => (
-  <section className="card stack" style={{ gap: 10 }}>
-    <div><h3 className="h3" style={{ fontSize: 18 }}>{title}</h3>{hint && <p className="small muted" style={{ margin: '2px 0 0' }}>{hint}</p>}</div>
+  <Card as="section" className="flex flex-col gap-2.5">
+    <div><H3 className="text-[18px]">{title}</H3>{hint && <p className="text-[13px] text-muted m-[2px_0_0]">{hint}</p>}</div>
     {children}
-  </section>
+  </Card>
 );

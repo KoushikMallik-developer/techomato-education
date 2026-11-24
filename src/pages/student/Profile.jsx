@@ -2,7 +2,7 @@ import { signOut } from 'firebase/auth';
 import { collection, getDoc, doc, query, where } from 'firebase/firestore';
 import { auth, db, list } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { Avatar, Bar, Icon, Loading, StreakDots, useLoad } from '../../ui.jsx';
+import { Avatar, Bar, Icon, Loading, StreakDots, useLoad, Card, Chip, btn, H2, H3 } from '../../ui.jsx';
 
 /* ---------- profile ---------- */
 export function Profile() {
@@ -15,30 +15,30 @@ export function Profile() {
   const passed = d.subs.reduce((n, s) => n + s.passed, 0), total = d.subs.reduce((n, s) => n + s.total, 0);
   const solved = d.subs.filter(s => s.passed === s.total).length;
   return (
-    <div className="stack" style={{ gap: 20, maxWidth: 760 }}>
-      <div className="card row" style={{ gap: 20, flexWrap: 'wrap' }}>
+    <div className="flex flex-col gap-5 max-w-[760px]">
+      <Card className="flex items-center gap-5 flex-wrap">
         <Avatar name={me.name} size={72} />
-        <div className="stack" style={{ gap: 4, flexGrow: 1 }}>
-          <h2 className="h2" style={{ fontSize: 32 }}>{me.name}</h2>
-          <span className="muted">{me.email}</span>
+        <div className="flex flex-col gap-1 grow">
+          <H2 className="text-[32px]">{me.name}</H2>
+          <span className="text-muted">{me.email}</span>
         </div>
-        <span className={`chip ${me.subscribed ? 'chip-pass' : ''}`}>{me.subscribed ? 'Subscribed' : 'Free plan'}</span>
-      </div>
-      <div className="grid g3">
+        <Chip as="span" className={`${me.subscribed ? 'bg-pass-soft! text-pass!' : ''}`}>{me.subscribed ? 'Subscribed' : 'Free plan'}</Chip>
+      </Card>
+      <div className="grid gap-4 grid-cols-3 max-tablet:grid-cols-1">
         {[[d.lb.xp, 'XP earned'], [solved, 'Questions fully solved'], [`${passed}/${total}`, 'Test cases passed']].map(([n, l]) => (
-          <div key={l} className="card stat stack" style={{ gap: 8 }}><div className="big" style={{ fontSize: 34 }}>{n}</div><div className="small muted">{l}</div></div>
+          <Card key={l} className="flex flex-col gap-2"><div className="big font-display font-extrabold tracking-[-.03em] leading-none text-[34px]">{n}</div><div className="text-[13px] text-muted">{l}</div></Card>
         ))}
       </div>
-      <div className="card stack" style={{ gap: 10 }}>
-        <div className="between"><h3 className="h3" style={{ fontSize: 20 }}>Streak</h3><span className="row small" style={{ gap: 4 }}><Icon name="flame" size={16} color="var(--accent)" />{d.lb.streak} {d.lb.streak === 1 ? 'day' : 'days'}</span></div>
+      <Card className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between gap-3"><H3 className="text-[20px]">Streak</H3><span className="flex items-center text-[13px] gap-1"><Icon name="flame" size={16} color="var(--accent)" />{d.lb.streak} {d.lb.streak === 1 ? 'day' : 'days'}</span></div>
         <StreakDots n={d.lb.streak} />
-      </div>
-      <div className="card stack" style={{ gap: 8 }}>
-        <h3 className="h3" style={{ fontSize: 20 }}>Plan</h3>
-        <p className="ink2" style={{ margin: 0 }}>{me.subscribed ? 'You can resubmit any question as many times as you like.' : 'You get one graded submission per question. Ask your admin to add a subscription to resubmit.'}</p>
+      </Card>
+      <Card className="flex flex-col gap-2">
+        <H3 className="text-[20px]">Plan</H3>
+        <p className="text-ink-2 m-0">{me.subscribed ? 'You can resubmit any question as many times as you like.' : 'You get one graded submission per question. Ask your admin to add a subscription to resubmit.'}</p>
         <Bar pct={me.subscribed ? 100 : 25} color="var(--pass-strong)" />
-      </div>
-      <button className="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
+      </Card>
+      <button className={btn('ghost', 'md', 'self-start')} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
     </div>
   );
 }

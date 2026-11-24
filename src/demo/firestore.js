@@ -4,6 +4,7 @@ export const getFirestore = () => ({});
 export const collection = (_, name) => ({ name });
 export const doc = (a, col, id) => (a?.name ? { col: a.name, id: Math.random().toString(36).slice(2, 10) } : { col, id }); // doc(collection) = new auto id
 export const where = (f, op, v) => ({ f, op, v });
+export const documentId = () => '__id__'; // where(documentId(), 'in', ids)
 export const orderBy = (f, dir = 'asc') => ({ order: f, dir });
 export const limit = lim => ({ lim });
 export const query = (c, ...w) => ({ ...c, w });
@@ -22,10 +23,11 @@ const apply = (cur, patch) => {
 };
 
 export const getDoc = async r => snap(r.col, r.id);
-const ids = q => Object.keys(db0[q.name] || {}).filter(id => (q.w || []).filter(w => w.op).every(w => match(db0[q.name][id], w)));
+const ids = q => Object.keys(db0[q.name] || {}).filter(id => (q.w || []).filter(w => w.op).every(w => match(w.f === '__id__' ? { __id__: id } : db0[q.name][id], w)));
 export const getDocs = async q => {
   let r = ids(q);
   const o = (q.w || []).find(w => w.order), l = (q.w || []).find(w => w.lim);
+  r.sort(); // Firestore returns documents in id order unless told otherwise; paging by id relies on it
   if (o) r.sort((a, b) => (db0[q.name][a][o.order] - db0[q.name][b][o.order]) * (o.dir === 'desc' ? -1 : 1));
   if (l) r = r.slice(0, l.lim);
   return { docs: r.map(id => snap(q.name, id)) };
