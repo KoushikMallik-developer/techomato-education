@@ -3,16 +3,19 @@ import { Logo, btn } from '../../ui.jsx';
 
 export function PublicNav({ onJump }) {
   return (
-    <header className="sticky top-0 z-20 bg-[color-mix(in_srgb,var(--paper)_88%,transparent)] backdrop-blur-[10px] border-b border-line">
-      <div className="max-w-[1280px] mx-auto h-[76px] px-6 flex items-center justify-between gap-4">
-        <Link className="no-underline" to="/" aria-label="Techomato home"><Logo /></Link>
+    <header className={`sticky top-0 z-20 backdrop-blur-[10px] border-b ${onJump ? 'bg-[#0E0F13]/90 border-white/10 text-white' : 'bg-[color-mix(in_srgb,var(--paper)_88%,transparent)] border-line'}`}>
+      <div className="max-w-[1280px] mx-auto h-[76px] px-6 max-phone:px-4 flex items-center justify-between gap-4">
+        <Link className="no-underline shrink-0" to="/" aria-label="Techomato home"><Logo dark={!!onJump} /></Link>
         <nav className="flex gap-8 font-medium max-tablet:hidden [:where(&)_a]:no-underline [:where(&)_a]:cursor-pointer [:where(&)_a:hover]:text-accent" aria-label="Main">
-          {onJump && <><a href="#/" onClick={onJump('loop')}>How it works</a><a href="#/" onClick={onJump('results')}>Results</a></>}
-          <Link to="/pricing">Pricing</Link>
+          {onJump && <><a href="#/" onClick={onJump('practice')}>Practice</a><a href="#/" onClick={onJump('contests')}>Contests</a><a href="#/" onClick={onJump('proctored')}>Proctored tests</a></>}
           <Link to="/for-institutes">For institutes</Link>
+          <Link to="/pricing">Pricing</Link>
           <Link to="/help">Help</Link>
         </nav>
-        <Link to="/login" className={btn('ink')}>Log in</Link>
+        <div className="flex items-center gap-2 max-phone:gap-1">
+          <Link to="/login" className={btn('plain', 'md', `max-phone:px-2.5 ${onJump ? 'text-white!' : ''}`)}>Log in</Link>
+          <Link to="/signup" className={btn('accent', 'md', 'max-phone:px-4')}><span>Sign up<span className="max-phone:hidden"> free</span></span></Link>
+        </div>
       </div>
     </header>
   );

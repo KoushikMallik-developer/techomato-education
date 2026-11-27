@@ -4,19 +4,20 @@ import { arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, query, whe
 import { db, list, listIn, questions } from '../../firebase.js';
 import { courseCode, when } from '../../schedule.js';
 import { useMe } from '../../auth.jsx';
-import { histogram, inCourse, joinSeries, lastWeeks, perWeek, scoreTable } from '../../score.js';
+import { averageScore, histogram, inCourse, joinSeries, lastWeeks, perWeek, scoreTable } from '../../score.js';
 import { BarChart, ChartCard, LineChart } from '../../Charts.jsx';
+import { Confirm } from './trainerShared.jsx';
 import { KIND_LABEL } from '../../proctor.js';
-import { Avatar, Btn, CodeBlock, Empty, Icon, Loading, Modal, attempt, notify, useBusy, useLoad, btn, Card, Chip, Bar, H2, H3, Input, Back } from '../../ui.jsx';
+import { Avatar, Btn, CodeBlock, Empty, Icon, Loading, Modal, notify, useBusy, useLoad, btn, Card, Chip, Bar, H2, H3, Input, Back, PageHero } from '../../ui.jsx';
 
-// Staff view of a course: enrolled students and course analytics. Admin also enrolls students (and records the payment). Per-student results live on the Results page.
+// Staff view of a course: enrolled students and course analytics. Admin also enrolls students (courses are free; payments are only for Pro). Per-student results live on the Results page.
 export default function CourseDetail() {
   const { id } = useParams();
   const me = useMe();
   const nav = useNavigate();
   const [pick, setPick] = useState('');
+  const [ask, setAsk] = useState(null); // { title, body, label, onYes } for the confirmation dialog
   const [closing, setClosing] = useState(false); // confirmation dialog for marking the course completed or reopening it
-  const [amount, setAmount] = useState('');
   const [busy, run] = useBusy();
   const [cur, reload] = useLoad(async () => {
     const snap = await getDoc(doc(db, 'courses', id));
@@ -55,62 +56,38 @@ export default function CourseDetail() {
   const assigned = course.testIds.map(t => tests.find(x => x.id === t)).filter(t => t && (admin || t.authorId === me.uid)); // a trainer sees the tests he wrote
   const rows = scoreTable(enrolled, assigned, caseCount, subs);
   const options = users.filter(u => u.role === 'student' && !course.students.includes(u.id)).map(u => [u.id, u.name]);
-  // one batch = all writes land or none do (no enrolled-but-unpaid students)
   const commit = (msg, build) => run(async () => {
     const b = writeBatch(db);
     b.update(doc(db, 'courses', id), build.data);
     build.extra?.(b);
     await b.commit();
     await build.after?.();
-    setPick(''); setAmount(''); notify(msg); reload();
+    setPick(''); notify(msg); reload();
   });
-  const ping = (b, ids, text) => ids.forEach(userId => b.set(doc(collection(db, 'notifications')), { userId, courseId: id, text, link: `/course/${id}`, read: false, at: Date.now() }));
-  const enroll = () => {
-    const student = users.find(u => u.id === pick), paid = Number(amount) || 0;
-    commit('Student enrolled', { data: { students: arrayUnion(pick), joins: arrayUnion({ uid: pick, at: Date.now() }) }, extra: b => {
-      if (paid > 0) b.set(doc(collection(db, 'payments')), { userId: pick, userName: student.name, courseId: id, courseTitle: course.title, amount: paid, at: Date.now() });
-      ping(b, [pick], `You were enrolled in ${course.title}`);
-    } });
-  };
-  const scored = rows.flatMap(r => r.cells).filter(Boolean);
-  const avg = scored.length ? Math.round(scored.reduce((n, c) => n + (c.total ? (100 * c.passed) / c.total : 0), 0) / scored.length) : null;
-  const del = () => confirm(`Delete "${course.title}"? Students lose access. Submissions are kept.`) && attempt(async () => { await deleteDoc(doc(db, 'courses', id)); notify('Course deleted'); nav('/courses'); });
+  const enroll = () => commit('Student enrolled', { data: { students: arrayUnion(pick), joins: arrayUnion({ uid: pick, at: Date.now() }) } });
+  const avg = averageScore(subs, assigned, caseCount);
+  const del = () => setAsk({ title: `Delete "${course.title}"?`, body: 'Students lose access to it and its tests. Their submissions are kept. This cannot be undone.', label: 'Delete course',
+    onYes: async () => { await deleteDoc(doc(db, 'courses', id)); notify('Course deleted'); nav('/courses'); } });
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <Back to="/courses">All courses</Back>
         {admin && <button className={btn('plain', 'sm')} onClick={del}><Icon name="trash" size={16} />Delete course</button>}
       </div>
-      <Card className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-7 items-center max-tablet:grid-cols-1!">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center flex-wrap gap-2">
-            <Chip as="span">Trainer: {course.trainerName}</Chip>
-            {course.completed && <Chip tone="pass"><Icon name="check" size={14} stroke={2.4} />Completed</Chip>}
-          </div>
-          <H2 className="text-[40px]">{course.title}</H2>
-          <span className="text-[13px] text-muted">Course ID <b className="font-mono">{courseCode(course)}</b></span>
-          <p className="text-ink-2 m-0 text-[17px]">{course.description}</p>
-        </div>
-        <div className="grid grid-cols-2 max-phone:grid-cols-1 gap-2.5">
-          {[[enrolled.length, 'Students'], [assigned.length, 'Tests'], [avg === null ? '—' : avg + '%', 'Average test score'], [scored.length, 'Test results']].map(([n, l]) => (
-            <div className="bg-paper rounded-[14px] p-4" key={l}>
-              <div className="big font-display font-extrabold tracking-[-.03em] leading-none text-[30px]">{n}</div><div className="text-[13px] text-muted">{l}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <PageHero compact name={`course-${id}`} pill={`Course · ${courseCode(course)}${course.completed ? ' · Completed' : ''}`} title={course.title} text={course.description}
+        stats={[['users', 'Students', enrolled.length, `trainer: ${course.trainerName}`], ['clip', 'Tests', assigned.length, 'assigned'], ['check', 'Results', rows.flatMap(r => r.cells).filter(Boolean).length, 'test results']]}
+        ring={{ pct: avg ?? 0, big: avg === null ? '-' : `${avg}%`, small: 'average student score' }} />
 
       <Analytics course={course} rows={rows} assigned={assigned} subs={subs} />
 
       {admin && (
         <Card as="section" className="flex flex-col gap-3">
-          <H3 className="text-[20px]">Enroll a student (after payment)</H3>
+          <H3 className="text-[20px]">Enroll a student</H3>
           <div className="flex items-center gap-3 flex-wrap">
             <Input as="select" className="max-w-[320px]" value={pick} onChange={e => setPick(e.target.value)} aria-label="Choose a student">
               <option value="">Select…</option>
               {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
             </Input>
-            <Input className="max-w-[180px]" type="number" min="0" placeholder="Amount paid (₹)" aria-label="Amount paid" value={amount} onChange={e => setAmount(e.target.value)} />
             <Btn v="accent" disabled={!pick || busy} onClick={enroll}>Enroll</Btn>
           </div>
         </Card>
@@ -119,7 +96,7 @@ export default function CourseDetail() {
       <Card as="section" className="flex flex-col gap-3">
         <H3 className="text-[20px]">Enrolled students</H3>
         {!enrolled.length ? <Empty title="No students enrolled yet" /> : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <table className="border-collapse w-full">
               <thead><tr><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Student</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Enrolled on</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Tests taken</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Average score</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Last active</th>{admin && <th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line" />}</tr></thead>
               <tbody>
@@ -132,9 +109,9 @@ export default function CourseDetail() {
                     <td className="p-3 border-b border-line text-[15px]"><span className="flex items-center gap-2.5"><Avatar name={student.name} size={32} /><span className="flex flex-col"><b>{student.name}</b><span className="text-[12px] text-muted">{student.email}</span></span></span></td>
                     <td className="p-3 border-b border-line text-[15px]">{joinedAt(student.id) ? when(joinedAt(student.id)) : <span className="text-[13px] text-muted">Not recorded</span>}</td>
                     <td className="p-3 border-b border-line text-[15px]">{got.length} of {assigned.length}</td>
-                    <td className="p-3 border-b border-line text-[15px]">{mean === null ? <span className="text-[13px] text-muted">None yet</span> : <Chip as="span" className={`${mean >= 60 ? 'bg-pass-soft! text-pass!' : 'bg-warn-soft! text-warn!'}`}>{mean}%</Chip>}</td>
+                    <td className="p-3 border-b border-line text-[15px]">{mean === null ? <span className="text-[13px] text-muted">None yet</span> : <Chip as="span" tone={mean >= 70 ? 'pass' : mean >= 40 ? 'warn' : 'danger'}>{mean}%</Chip>}</td>
                     <td className="p-3 border-b border-line text-[15px]">{last ? when(last) : <span className="text-[13px] text-muted">Never</span>}</td>
-                    {admin && <td className="p-3 border-b border-line text-[15px]"><button className={btn('plain', 'sm')} onClick={() => commit('Student removed', { data: { students: arrayRemove(student.id) } })}>Remove</button></td>}
+                    {admin && <td className="p-3 border-b border-line text-[15px]"><button className={btn('plain', 'sm')} onClick={() => setAsk({ title: `Remove ${student.name}?`, body: `${student.name} loses access to ${course.title} and its tests. Their submissions are kept, and you can enroll them again later.`, label: 'Remove student', onYes: () => commit('Student removed', { data: { students: arrayRemove(student.id) } }) })}>Remove</button></td>}
                   </tr>
                   );
                 })}
@@ -147,22 +124,23 @@ export default function CourseDetail() {
       <Card as="section" className="flex flex-col gap-2.5" style={{ borderColor: course.completed ? undefined : 'var(--warn)' }}>
         <H3 className="text-[18px]">Course status</H3>
         <p className="text-[13px] text-muted m-0">
-          {course.completed ? 'This course is marked completed. Students see it under Completed courses.' : 'Mark the course completed only when it has really finished. Students will move it from Joined to Completed courses and be notified.'}
+          {course.completed ? 'This course is marked completed. Students see it under Completed courses.' : 'Mark the course completed only when it has really finished. Students will see it move from Joined to Completed courses.'}
         </p>
         <div><Btn v="ghost" className="min-h-9! px-3.5! text-[13px]! pointer-coarse:min-h-11!" disabled={busy} onClick={() => setClosing(true)}>{course.completed ? 'Reopen course…' : 'Mark course completed…'}</Btn></div>
       </Card>
 
+      {ask && <Confirm {...ask} onClose={() => setAsk(null)} />}
       {closing && (
         <Modal onClose={() => setClosing(false)}>
           <H3 as="h2" className="text-[24px]">{course.completed ? 'Reopen this course?' : 'Mark this course as completed?'}</H3>
           <p className="text-ink-2 m-0">
             {course.completed
-              ? `${course.title} will move back to Joined courses for its ${course.students.length} students, and they will be notified.`
-              : `${course.title} will move to Completed courses for its ${course.students.length} students, and they will be notified. Only do this when the course has finished. You can reopen it later.`}
+              ? `${course.title} will move back to Joined courses for its ${course.students.length} students.`
+              : `${course.title} will move to Completed courses for its ${course.students.length} students. Only do this when the course has finished. You can reopen it later.`}
           </p>
           <div className="flex items-center gap-3 justify-end flex-wrap">
             <Btn v="ghost" onClick={() => setClosing(false)}>Cancel</Btn>
-            <Btn v={course.completed ? 'ink' : 'accent'} disabled={busy} onClick={() => commit(course.completed ? 'Course reopened' : 'Course marked completed', { data: { completed: !course.completed }, extra: b => ping(b, course.students.slice(0, 450), course.completed ? `${course.title} was reopened` : `${course.title} was marked completed`), after: () => setClosing(false) })}>{course.completed ? 'Yes, reopen' : 'Yes, mark completed'}</Btn>
+            <Btn v={course.completed ? 'ink' : 'accent'} disabled={busy} onClick={() => commit(course.completed ? 'Course reopened' : 'Course marked completed', { data: { completed: !course.completed }, after: () => setClosing(false) })}>{course.completed ? 'Yes, reopen' : 'Yes, mark completed'}</Btn>
           </div>
         </Modal>
       )}
@@ -172,9 +150,10 @@ export default function CourseDetail() {
 }
 
 // One student's answers (and proctoring evidence) for one test, in a dialog.
-export function ResultModal({ courseId, student, test, qs, subs, onClose }) {
+export function ResultModal({ courseId, student, test, qs, subs, onClose, others, onMove }) {
+  const i = others ? others.findIndex(x => x.id === student.id) : -1; // others: the students to step through
   return (
-  <Modal onClose={onClose}>
+  <Modal wide onClose={onClose}>
       <div className="max-h-[75vh] overflow-auto flex flex-col gap-3.5">
         <H3 as="h2" className="text-[24px]">{student.name}, {test.title}</H3>
         {test.proctored && <Proctoring uid={student.id} courseId={courseId} test={test} />}
@@ -189,7 +168,16 @@ export function ResultModal({ courseId, student, test, qs, subs, onClose }) {
           );
         })}
       </div>
-      <button className={btn('ink', 'md', 'self-end')} onClick={() => onClose()}>Close</button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {i >= 0 ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Btn v="ghost" size="sm" disabled={i === 0} onClick={() => onMove(others[i - 1])}><Icon name="back" size={15} />Previous</Btn>
+            <Btn v="ghost" size="sm" disabled={i === others.length - 1} onClick={() => onMove(others[i + 1])}>Next<Icon name="arrow" size={15} /></Btn>
+            <span className="text-[13px] text-muted tabular-nums">Student {i + 1} of {others.length}</span>
+          </div>
+        ) : <span />}
+        <button className={btn('ink')} onClick={() => onClose()}>Close</button>
+      </div>
     </Modal>
   );
 }
@@ -235,7 +223,7 @@ function Analytics({ course, rows, assigned, subs }) {
     <section className="flex flex-col gap-4" aria-label="Course performance">
       <H3 className="text-[22px]">How this course is doing</H3>
       <div className="grid gap-4 grid-cols-2 max-phone:grid-cols-1">
-        <ChartCard title="Students joined" hint="Total enrolled at the end of each week. Students enrolled before joins were logged count from the start.">
+        <ChartCard title="Students joined" hint="Total enrolled at the end of each week. Students with no join date count from the first week.">
           <LineChart data={joins.map((value, i) => ({ label: labels[i], value }))} label="Students enrolled by week" />
         </ChartCard>
         <ChartCard title="Test activity" hint="Submissions per week, all tests.">

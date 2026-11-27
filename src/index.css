@@ -4,7 +4,7 @@
 :root {
   --paper:#F5F2EC; --surface:#FFFFFF; --ink:#17181C; --ink-2:#45484F; --muted:#5B5F6A; --line:#E4DFD5; --soft:#EFEAE1;
   --accent:#C8381F; --accent-soft:#FBE6E0; --accent-ink:#8E2413; --on-accent:#FFFFFF;
-  --pass:#1F4FA8; --pass-strong:#1F5FCC; --pass-soft:#E3ECFB; --warn:#8A3B05; --warn-soft:#FDEBD7;
+  --pass:#1F4FA8; --pass-strong:#1F5FCC; --pass-soft:#E3ECFB; --warn:#8A3B05; --warn-soft:#FDEBD7; --danger:#B42318; --danger-soft:#FCE4E0;
   --panel:#17181C; --panel-2:#22242A; --panel-line:#2A2C33; --panel-text:#E7E8EC; --on-dark-2:#C9CBD2; --rose:#F2B8A8; --panel-muted:#9CA0AB;
   --leaf:#2F5D3A; --field-line:#858892;
   --chip-gray:#E6E7EA; --chip-gray-ink:#45484F; --chip-green:#DDF0E1; --chip-green-ink:#1B5A2B; --chip-amber:#FFEFC2; --chip-amber-ink:#7A5200; --chip-proctor:#FBD5D2; --chip-proctor-ink:#9B1C1C;
@@ -15,7 +15,7 @@
   :root:not([data-theme="light"]) {
     --paper:#141417; --surface:#1C1D22; --ink:#F1EFEA; --ink-2:#C9CBD2; --muted:#A3A6AF; --line:#2C2E35; --soft:#25272D;
     --accent:#E2573D; --on-accent:#17181C; --accent-soft:#3A1E18; --accent-ink:#F2B8A8;
-    --pass:#9DB9F2; --pass-strong:#5B8DEF; --pass-soft:#1B2640; --warn:#F0B27A; --warn-soft:#3A2616;
+    --pass:#9DB9F2; --pass-strong:#5B8DEF; --pass-soft:#1B2640; --warn:#F0B27A; --warn-soft:#3A2616; --danger:#FF8A7A; --danger-soft:#3D1A17;
     --panel:#0F1013; --panel-2:#1A1B20; --panel-line:#26282E; --field-line:#6B6E78;
     --chip-gray:#2E3037; --chip-gray-ink:#C4C7CF; --chip-green:#17331E; --chip-green-ink:#8FD3A0; --chip-amber:#3B2E10; --chip-amber-ink:#F2C766; --chip-proctor:#4A1F1D; --chip-proctor-ink:#FFB4AE;
     color-scheme: dark;
@@ -24,7 +24,7 @@
 :root[data-theme="dark"] {
   --paper:#141417; --surface:#1C1D22; --ink:#F1EFEA; --ink-2:#C9CBD2; --muted:#A3A6AF; --line:#2C2E35; --soft:#25272D;
   --accent:#E2573D; --on-accent:#17181C; --accent-soft:#3A1E18; --accent-ink:#F2B8A8;
-  --pass:#9DB9F2; --pass-strong:#5B8DEF; --pass-soft:#1B2640; --warn:#F0B27A; --warn-soft:#3A2616;
+  --pass:#9DB9F2; --pass-strong:#5B8DEF; --pass-soft:#1B2640; --warn:#F0B27A; --warn-soft:#3A2616; --danger:#FF8A7A; --danger-soft:#3D1A17;
   --panel:#0F1013; --panel-2:#1A1B20; --panel-line:#26282E; --field-line:#6B6E78;
   --chip-gray:#2E3037; --chip-gray-ink:#C4C7CF; --chip-green:#17331E; --chip-green-ink:#8FD3A0; --chip-amber:#3B2E10; --chip-amber-ink:#F2C766; --chip-proctor:#4A1F1D; --chip-proctor-ink:#FFB4AE;
   color-scheme: dark;
@@ -33,7 +33,7 @@
 /* The tokens become Tailwind colours, fonts and breakpoints: bg-surface, text-muted, font-display, max-tablet:... */
 @theme inline {
   --color-paper: var(--paper); --color-surface: var(--surface); --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-muted: var(--muted); --color-line: var(--line); --color-soft: var(--soft);
-  --color-accent: var(--accent); --color-accent-soft: var(--accent-soft); --color-accent-ink: var(--accent-ink); --color-on-accent: var(--on-accent);
+  --color-accent: var(--accent); --color-accent-soft: var(--accent-soft); --color-accent-ink: var(--accent-ink); --color-on-accent: var(--on-accent); --color-danger: var(--danger); --color-danger-soft: var(--danger-soft);
   --color-pass: var(--pass); --color-pass-strong: var(--pass-strong); --color-pass-soft: var(--pass-soft); --color-warn: var(--warn); --color-warn-soft: var(--warn-soft);
   --color-panel: var(--panel); --color-panel-2: var(--panel-2); --color-panel-line: var(--panel-line); --color-panel-text: var(--panel-text); --color-on-dark-2: var(--on-dark-2); --color-rose: var(--rose); --color-panel-muted: var(--panel-muted);
   --color-leaf: var(--leaf); --color-field-line: var(--field-line);
@@ -42,25 +42,59 @@
 }
 @theme {
   --color-cream: #F5F2EC; --color-night: #17181C; /* always-light and always-dark, whatever the theme */
-  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --radius-sm: 10px; --radius-md: 16px; --radius-lg: 22px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
   --breakpoint-phone: 621px; --breakpoint-tablet: 961px; --breakpoint-laptop: 1101px; /* used as max-phone:, max-tablet:, max-laptop: (the old 620 / 960 / 1100px) */
   --animate-spin-fast: spin-fast .7s linear infinite;
-  --animate-rise: rise .3s ease both;
-  --animate-rise2: rise2 .7s cubic-bezier(.2, .7, .2, 1) both;
+  --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
+  --animate-rise: rise .28s cubic-bezier(.16, 1, .3, 1) both;
+  --animate-rise2: rise2 .45s cubic-bezier(.16, 1, .3, 1) both;
+  --animate-tick: tick .32s cubic-bezier(.16, 1, .3, 1) both;
+  --animate-stamp: stamp .55s cubic-bezier(.16, 1, .3, 1) both;
   --animate-shimmer: shimmer 1.1s linear infinite;
   @keyframes spin-fast { to { transform: rotate(360deg); } }
-  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes rise2 { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes rise2 { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes tick { from { opacity: 0; transform: translateX(-6px); } }
+  @keyframes stamp { 0% { opacity: 0; transform: scale(1.3); filter: blur(4px); } 55% { opacity: 1; filter: blur(0); } 100% { transform: scale(1); } }
+  @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
   @keyframes shimmer { to { background-position: -200% 0; } }
+  --animate-float: float 9s ease-in-out infinite;
+  --animate-scan: scan 1.1s cubic-bezier(.45, 0, .55, 1) infinite alternate;
+  @keyframes scan { from { top: 22%; } to { top: 78%; } }
+  @keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-24px, 18px); } }
 }
 
-/* Two global rules Tailwind has no utility for: the focus ring and reduced motion. */
+/* Global rules Tailwind has no utility for: focus ring, browser surfaces, line breaks, numerals, motion. */
 @layer base {
-  :focus-visible { outline: 2.5px solid var(--pass-strong); outline-offset: 2px; border-radius: 6px; }
-  @media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation: none !important; transition: none !important; } }
+  :focus-visible { outline: 2px solid var(--pass-strong); outline-offset: 2px; border-radius: 6px; }
+  :root { caret-color: var(--accent); scrollbar-color: var(--field-line) transparent; accent-color: var(--accent); }
+  ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; }
+  h1, h2, h3, h4 { text-wrap: balance; }
+  p, li { text-wrap: pretty; }
+  table, time { font-variant-numeric: tabular-nums; }
+  /* a check that draws itself: the Icon paths carry pathLength=1 */
+  .draw path { stroke-dasharray: 1; animation: draw .4s cubic-bezier(.65, 0, .35, 1) both; animation-delay: inherit; }
+  /* page changes: a quick cross-fade, and named elements (a question title, a course) morph into their new place */
+  ::view-transition-old(root) { animation: .16s ease-in both vt-out; }
+  ::view-transition-new(root) { animation: .24s cubic-bezier(.16, 1, .3, 1) both vt-in; }
+  ::view-transition-group(*) { animation-duration: .38s; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+  @keyframes vt-out { to { opacity: 0; } }
+  @keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+  /* reduced motion: no movement or loops, but every animation still lands on its final state (checks stay drawn, states stay readable) */
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+    ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  }
   button { cursor: pointer; }
   svg { max-width: 100%; }
+}
+
+/* Printing a receipt: only the receipt shows, on white, whatever the theme */
+@media print {
+  body:has(.receipt) * { visibility: hidden; }
+  body:has(.receipt) .receipt, body:has(.receipt) .receipt * { visibility: visible; }
+  body:has(.receipt) .receipt { position: fixed; inset: 0 auto auto 0; width: 100%; max-width: 520px; padding: 24px; color: #17181C; background: #fff; }
 }

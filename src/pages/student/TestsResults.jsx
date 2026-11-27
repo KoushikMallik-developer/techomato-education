@@ -2,11 +2,11 @@ import { Link, useParams } from 'react-router-dom';
 import { collection, documentId, query, where } from 'firebase/firestore';
 import { db, list, listIn } from '../../firebase.js';
 import { byRank, inCourse } from '../../score.js';
-import { notOpen, timed, when, windowOf } from '../../schedule.js';
+import { notOpen, timed, timeUp, when, windowOf } from '../../schedule.js';
 import { useMe } from '../../auth.jsx';
 import { flagCount } from '../../proctor.js';
-import { Back, Bar, Card, Chip, Empty, H2, H3, Icon, Loading, btn, plural, useLoad } from '../../ui.jsx';
-import { get, mySubs, myCourses } from './data.js';
+import { Back, Bar, Card, Chip, Empty, H2, H3, Icon, Loading, btn, plural, useLoad, PageHero, heroBtn, heroLink } from '../../ui.jsx';
+import { get, myAttempts, mySubs, myCourses } from './data.js';
 
 // Every test in every course the student is in, with how far they got. A test in two courses is two rows: results are kept per course.
 function useMyTests() {
@@ -14,14 +14,15 @@ function useMyTests() {
   return useLoad(async () => {
     const courses = await myCourses(me.uid);
     const tests = (await Promise.all([...new Set(courses.flatMap(c => c.testIds))].map(id => get('tests', id)))).filter(t => t && !t.draft);
-    const subs = await mySubs(me.uid);
+    const [subs, atts] = await Promise.all([mySubs(me.uid), myAttempts(me.uid)]);
     const rows = courses.flatMap(c => c.testIds.map(id => tests.find(t => t.id === id)).filter(Boolean).map(t => {
       const mine = subs.filter(s => s.testId === t.id && inCourse(s, c.id)), n = t.questionIds.length;
       const passed = mine.reduce((a, x) => a + x.passed, 0), total = mine.reduce((a, x) => a + x.total, 0);
       const last = Math.max(0, ...mine.map(x => x.at?.toMillis?.() ?? x.at ?? 0)); // `at` is a number in demo mode and a Timestamp in Firebase
-      const done = mine.length, submitted = n > 0 && done >= n, win = timed(t) ? windowOf(t) : 'open';
-      const status = submitted ? ['Submitted', 'pass'] : done ? ['In progress', 'accent'] : win === 'closed' ? ['Closed', 'gray'] : win === 'soon' ? ['Opens soon', 'warn'] : ['Not started', 'soft'];
-      return { c, t, n, done, passed, total, pct: total ? Math.round((100 * passed) / total) : 0, last, submitted, status };
+      const att = atts.find(a => a.id === `${me.uid}_${c.id}_${t.id}`);
+      const done = mine.length, submitted = n > 0 && done >= n, over = !submitted && timeUp(t, att, done), started = done > 0 || !!att, win = timed(t) ? windowOf(t) : 'open';
+      const status = submitted ? ['Submitted', 'pass'] : over ? ['Submitted', 'pass'] : started ? ['In progress', 'accent'] : win === 'closed' ? ['Closed', 'gray'] : win === 'soon' ? ['Opens soon', 'warn'] : ['Not started', 'soft'];
+      return { c, t, n, done, passed, total, pct: total ? Math.round((100 * passed) / total) : 0, last, submitted, over, started, status };
     }));
     return { courses, rows };
   });
@@ -33,17 +34,37 @@ export function StudentTests() {
   if (!d) return <Loading />;
   const { rows } = d;
   if (!rows.length) return <Empty title="No tests yet" body="Tests your trainer assigns to your courses show up here." />;
+  // A submitted test, or one whose time ran out, counts as closed: it cannot be taken again.
+  const group = r => (r.submitted || r.over || windowOf(r.t) === 'closed' ? 'closed' : r.started ? 'open' : 'soon'); // In progress = started; Upcoming = not started yet
+  const SECTIONS = [['open', 'In progress', 'Started. Finish before your time runs out.'], ['soon', 'Upcoming', 'Not started yet. Some are open now, some open later.'], ['closed', 'Closed', 'Submitted, or past the end time.']];
+  const next = rows.find(r => group(r) === 'open') || rows.find(r => group(r) === 'soon' && windowOf(r.t) === 'open'); // a started test beats a new one
   return (
+    <div className="flex flex-col gap-8">
+      <PageHero pill="Tests" title={next ? 'Ready when you are.' : 'All caught up.'}
+        stats={[['play', 'In progress', rows.filter(r => group(r) === 'open').length, 'started'], ['clock', 'Upcoming', rows.filter(r => group(r) === 'soon').length, 'not started'], ['lock', 'Closed', rows.filter(r => group(r) === 'closed').length, 'submitted or ended']]}
+        actions={<>{next && <Link to={`/test/${next.c.id}/${next.t.id}`} state={{ to: '/tests', label: 'Tests' }} className={heroBtn}>{next.started ? 'Continue' : 'Start'}: {next.t.title}<span className="transition-transform duration-200 group-hover/go:translate-x-1"><Icon name="arrow" size={18} stroke={2.4} /></span></Link>}<Link to="/results" className={heroLink}>See my results →</Link></>} />
+      {SECTIONS.map(([key, title, hint]) => { const list = rows.filter(r => group(r) === key); return (
+        <section key={key} className="flex flex-col gap-3">
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <H3 as="h2" className="text-[22px]">{title}</H3>
+            <span className="inline-grid place-items-center min-w-7 h-7 px-2 rounded-full bg-soft text-[13px] font-bold">{list.length}</span>
+            <span className="text-[13px] text-muted">{hint}</span>
+          </div>
+          {!list.length ? <Card className="text-muted text-[14px]">No {title.toLowerCase()} tests.</Card> : (
     <div className="grid gap-4 grid-cols-3 max-laptop:grid-cols-2 max-tablet:grid-cols-1">
-      {rows.map(({ c, t, n, done, last, submitted, status }) => { const shut = !done && notOpen(t); return (
+      {list.map(({ c, t, n, done, last, submitted, over, started, status }) => { const shut = !started && notOpen(t), finished = submitted || over; return (
         <Card as="article" key={c.id + t.id} className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3"><span className="text-[13px] text-muted">{c.title}</span><Chip tone={status[1]}>{status[0]}</Chip></div>
           <div className="flex items-center flex-wrap gap-2.5"><H3 as="h2" className="text-[22px]">{t.title}</H3>{t.proctored && <Chip tone="proctor"><Icon name="lock" size={14} />Proctored</Chip>}</div>
           <div className="grid gap-2 grid-cols-2 text-[13px]">
-            {[['Questions', n], ['Time limit', timed(t) ? `${t.durationMin} min` : 'None'], [timed(t) && windowOf(t) === 'soon' ? 'Opens' : 'Start by', timed(t) ? when(windowOf(t) === 'soon' ? t.publishAt : t.endAt) : 'Any time'], ['Submitted', last ? when(last) : 'Not yet']].map(([l, v]) => <div key={l} className="flex flex-col"><span className="text-muted">{l}</span><b>{v}</b></div>)}
+            {[['Questions', n], ['Time limit', timed(t) ? `${t.durationMin} min` : 'None'], [timed(t) && windowOf(t) === 'soon' ? 'Opens' : 'Start by', timed(t) ? when(windowOf(t) === 'soon' ? t.publishAt : t.endAt) : 'Any time'], [submitted || over || !done ? 'Submitted' : 'Last saved', last ? `${when(last)}${submitted ? '' : ` (${done}/${n})`}` : 'Not yet']].map(([l, v]) => <div key={l} className="flex flex-col"><span className="text-muted">{l}</span><b>{v}</b></div>)}
           </div>
-          <Link to={`/test/${c.id}/${t.id}`} state={{ to: '/tests', label: 'Tests' }} className={btn(submitted || shut ? 'ghost' : 'accent', 'md', 'self-start mt-auto')}>{submitted ? 'View result' : done ? 'Continue' : shut ? 'Details' : 'Start test'}</Link>
+          <Link to={`/test/${c.id}/${t.id}`} state={{ to: '/tests', label: 'Tests' }} className={btn(finished || shut ? 'ghost' : 'accent', 'md', 'self-start mt-auto')}>{finished ? 'View result' : started ? 'Continue' : shut ? 'Details' : 'Start test'}</Link>
         </Card>
+      ); })}
+    </div>
+          )}
+        </section>
       ); })}
     </div>
   );
@@ -54,16 +75,21 @@ export function StudentResults() {
   const [d] = useMyTests();
   if (!d) return <Loading />;
   if (!d.courses.length) return <Empty title="No courses yet" body="Once your admin enrolls you in a course, its tests and results show up here." />;
+  const sent = d.rows.filter(r => r.submitted), passedAll = d.rows.reduce((a, r) => a + r.passed, 0), totalAll = d.rows.reduce((a, r) => a + r.total, 0);
+  const best = [...d.rows].filter(r => r.done).sort((a, b) => b.pct - a.pct)[0];
+  const overall = totalAll ? Math.round((100 * passedAll) / totalAll) : 0;
   return (
     <div className="flex flex-col gap-6">
+      <PageHero pill="Results" title={sent.length ? 'How you did.' : 'Nothing submitted yet.'}
+        stats={[['check', 'Submitted', `${sent.length}/${d.rows.length}`, 'tests'], ['target', 'Test cases', `${passedAll}/${totalAll}`, 'passed'], ['trophy', 'Best test', best ? `${best.pct}%` : '-', best ? best.t.title : 'nothing yet']]}
+        ring={{ pct: overall, big: `${overall}%`, small: 'of test cases passed' }} />
       {d.courses.map(c => {
         const rows = d.rows.filter(r => r.c.id === c.id);
-        const passed = rows.reduce((a, r) => a + r.passed, 0), total = rows.reduce((a, r) => a + r.total, 0);
         return (
           <section key={c.id} className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between gap-3 flex-wrap">
               <H3 as="h2" className="text-[22px]">{c.title}</H3>
-              <span className="text-[13px] text-muted">{rows.filter(r => r.submitted).length} of {rows.length} tests submitted{total > 0 && ` · ${passed}/${total} test cases passed`}</span>
+              <span className="text-[13px] text-muted">{rows.filter(r => r.submitted).length} of {rows.length} tests submitted</span>
             </div>
             {!rows.length ? <Card className="text-muted">No tests in this course yet.</Card> : (
               <Card className="p-1.5">
@@ -109,13 +135,13 @@ export function StudentTestResult() {
         <span className="text-muted">{c.title}{last ? ` · ${submitted ? 'Submitted' : 'Last answer'} ${when(last)}` : ''}</span>
       </div>
       <div className={`grid gap-4 ${t.proctored ? 'grid-cols-4 max-laptop:grid-cols-2' : 'grid-cols-3'} max-tablet:grid-cols-1`}>
-        <div className="bg-panel text-cream rounded-lg p-[22px] flex flex-col gap-3">
-          <div className="text-[13px] text-on-dark-2">Your score</div>
-          <div className="font-display font-extrabold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{done ? `${pct}%` : 'None'}</div>
-          <Bar pct={pct} fill="bg-rose" track="bg-[#3A3D45]" aria-hidden="true" />
+        <div className="bg-accent text-on-accent rounded-xl p-5 flex flex-col gap-3 shadow-[0_1px_2px_rgba(23,24,28,.12)]">
+          <div className="text-[13px] font-medium opacity-85">Your score</div>
+          <div className="font-display font-bold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{done ? `${pct}%` : 'None'}</div>
+          <Bar pct={pct} fill="bg-on-accent" track="bg-on-accent/25" aria-hidden="true" />
         </div>
         {[['Test cases passed', done ? `${passed}/${total}` : '-'], ['Questions answered', `${done}/${n}`], ...(t.proctored ? [['Flags', flags ?? '-']] : [])].map(([l, v]) => (
-          <Card key={l} className="flex flex-col gap-3 justify-between"><div className="text-[13px] text-muted">{l}</div><div className="font-display font-extrabold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{v}</div></Card>
+          <Card key={l} className="flex flex-col gap-3 justify-between"><div className="text-[13px] text-muted">{l}</div><div className="font-display font-bold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{v}</div></Card>
         ))}
       </div>
       <ClassResults courseId={c.id} testId={t.id} proctored={!!t.proctored} />

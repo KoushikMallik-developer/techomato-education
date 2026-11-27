@@ -31,7 +31,7 @@ export function ProctorOverlay() {
         <div className="flex flex-col gap-3 max-w-[560px] text-center items-center">
           <H2 className="text-[34px]">{COUNTDOWN_TEXT[why]}</H2>
           <p className="m-0 text-[20px]">Your exam will be auto-submitted in</p>
-          <div className="big font-display font-extrabold tracking-[-.03em] text-[96px] leading-[1]" aria-live="assertive">{countdown}</div>
+          <div className="big font-display font-bold tracking-[-.03em] text-[96px] leading-[1]" aria-live="assertive">{countdown}</div>
           <p className="m-0 text-[18px]">{why === 'no-face' ? 'Look at the camera so your face is visible to cancel.' : why === 'camera-black' ? 'Uncover the camera and turn on a light to cancel.' : 'Your camera has stopped. This cannot be undone.'}</p>
         </div>
       </div>

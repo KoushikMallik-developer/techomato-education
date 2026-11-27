@@ -3,15 +3,15 @@ import { Card, H3 } from './ui.jsx';
 const W = 520, H = 190, PAD = { l: 30, r: 10, t: 22, b: 28 };
 const niceMax = v => { const m = Math.max(v, 1); const p = 10 ** Math.floor(Math.log10(m)); return Math.ceil(m / p) * p; };
 
-function Frame({ label, max, children }) {
+function Frame({ label, max, children, w = W }) {
   const ticks = max % 2 ? [0, max] : [0, max / 2, max]; // whole numbers only
   return (
-    <svg className="block [overflow:visible]" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
+    <svg className="block [overflow:visible]" viewBox={`0 0 ${w} ${H}`} width="100%" role="img" aria-label={label}>
       {ticks.map(t => {
         const y = PAD.t + (1 - t / max) * (H - PAD.t - PAD.b);
         return (
           <g key={t}>
-            <line className="[stroke:var(--line)]" x1={PAD.l} x2={W - PAD.r} y1={y} y2={y} strokeWidth="1" />
+            <line className="[stroke:var(--line)]" x1={PAD.l} x2={w - PAD.r} y1={y} y2={y} strokeWidth="1" />
             <text className="[fill:var(--muted)]" x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="11">{Math.round(t)}</text>
           </g>
         );
@@ -40,17 +40,18 @@ export function BarChart({ data, label, color = 'var(--accent)', max = niceMax(M
   );
 }
 
-export function LineChart({ data, label, color = 'var(--pass-strong)' }) {
-  const max = niceMax(Math.max(0, ...data.map(d => d.value))), iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b;
+// w: a smaller drawing width for narrow cards, so the text stays readable
+export function LineChart({ data, label, color = 'var(--pass-strong)', w = W }) {
+  const max = niceMax(Math.max(0, ...data.map(d => d.value))), iw = w - PAD.l - PAD.r, ih = H - PAD.t - PAD.b;
   const pt = (d, i) => [PAD.l + (data.length < 2 ? iw / 2 : (iw * i) / (data.length - 1)), PAD.t + (1 - d.value / max) * ih];
   const pts = data.map(pt), path = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-  const last = pts[pts.length - 1];
+  const last = pts[pts.length - 1], every = Math.ceil(data.length / (w < 400 ? 4 : 8)), dots = data.length <= 14; // many points: a clean line, only the last dot
   return (
-    <Frame label={`${label}: ${data.map(d => `${d.label} ${d.value}`).join(', ')}`} max={max}>
+    <Frame label={`${label}: ${data.map(d => `${d.label} ${d.value}`).join(', ')}`} max={max} w={w}>
       {pts.length > 1 && <path d={`${path} L${last[0]} ${PAD.t + ih} L${pts[0][0]} ${PAD.t + ih} Z`} style={{ fill: color }} opacity="0.12" />}
       <path d={path} fill="none" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" style={{ stroke: color }} />
-      {pts.map((p, i) => <circle className="[fill:var(--surface)]" key={i} cx={p[0]} cy={p[1]} r="3.5" style={{ stroke: color }} strokeWidth="2" />)}
-      {data.map((d, i) => (i % Math.ceil(data.length / 8) === 0 || i === data.length - 1) && <text className="[fill:var(--muted)]" key={i} x={pts[i][0]} y={H - 8} textAnchor="middle" fontSize="11">{d.label}</text>)}
+      {pts.map((p, i) => (dots || i === pts.length - 1) && <circle className="[fill:var(--surface)]" key={i} cx={p[0]} cy={p[1]} r="3.5" style={{ stroke: color }} strokeWidth="2" />)}
+      {data.map((d, i) => ((i % every === 0 && data.length - 1 - i >= every / 2) || i === data.length - 1) && <text className="[fill:var(--muted)]" key={i} x={pts[i][0]} y={H - 8} textAnchor="middle" fontSize="11">{d.label}</text>)}
       {last && <text className="[fill:var(--ink)]" x={last[0]} y={last[1] - 10} textAnchor="end" fontSize="12" fontWeight="700">{data[data.length - 1].value}</text>}
     </Frame>
   );

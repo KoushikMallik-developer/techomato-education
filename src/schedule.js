@@ -4,7 +4,10 @@ export const timed = t => !!t?.durationMin; // older tests without a duration ha
 // 'soon' before the publish time, 'closed' after the end time (nobody can start), otherwise 'open'
 export const windowOf = (t, now = Date.now()) => (t?.publishAt && now < t.publishAt ? 'soon' : t?.endAt && now > t.endAt ? 'closed' : 'open');
 
-export const leftMs = (attempt, now = Date.now()) => Math.max(0, attempt.deadline - now);
+// A timed test the student can no longer answer: their deadline passed. With answers but no attempt record (old or demo data) it counts as over too.
+export const timeUp = (t, att, answered, now = Date.now()) => timed(t) && (att ? now > att.deadline : answered > 0);
+
+export const leftMs =(attempt, now = Date.now()) => Math.max(0, attempt.deadline - now);
 
 export const clock = ms => {
   const s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), p = n => String(n).padStart(2, '0');
@@ -53,5 +56,3 @@ export const langOfSub = (sub, q) => sub?.lang || (LANGS[q.env] ? q.env : 'pytho
 export const notOpen = t => timed(t) && windowOf(t) !== 'open'; // a timed test that has not opened yet or has closed: nobody can start it
 export const statusOf = (t, bankIds, courseCount) => (t.draft || readiness(t, bankIds, 0, courseCount).length ? 'draft' : windowOf(t));
 
-// Do a course's students get told about a test? 'all' = just published, 'new' = only courses the test was just added to, 'none' = a draft.
-export const shouldTell = (tell, on, had) => on && (tell === 'all' || (tell === 'new' && !had));

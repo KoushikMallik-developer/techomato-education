@@ -15,7 +15,8 @@ function addClass(d) {
   const plan = [['tt1', ['q1', 'q2', 'q3'], 0.55], ['tt2', ['q4', 'q5', 'q6'], 0.8], ['tt3', ['q2'], 0.5], ['tt4', ['q4', 'q5'], 0.6]];
   NAMES.forEach((name, i) => {
     const id = `d${i + 1}`;
-    d.users[id] = { name, email: `${name.split(' ')[0].toLowerCase()}.${name.split(' ')[1].toLowerCase()}@demo.com`, role: 'student', subscribed: i % 4 === 0 };
+    d.users[id] = { name, email: `${name.split(' ')[0].toLowerCase()}.${name.split(' ')[1].toLowerCase()}@demo.com`, role: 'student', subscribed: i % 4 === 0, createdAt: now - (2 + i * 2.7) * DAY, ...(i % 5 === 4 ? {} : { lastSignIn: now - (0.1 + ((i * 7) % 10) * 0.9) * DAY }) }; // a few never signed in
+    if (i % 4 === 0) d.payments[`pay_${id}`] = { userId: id, userName: name, kind: 'pro', amount: 499, at: now - (1 + i * 2.5) * DAY };
     d.courses.c1.students.push(id);
     d.courses.c1.joins.push({ uid: id, at: now - (1 + i * 2.7) * DAY }); // enrolled over the last eight weeks
     if (i < 12) d.courses.c3.students.push(id);
@@ -50,11 +51,11 @@ function addClass(d) {
 
 const seed = () => addClass({
   users: {
-    a1: { name: 'Demo Admin', email: 'admin@demo.com', role: 'admin', subscribed: false },
-    t1: { name: 'Demo Trainer', email: 'trainer@demo.com', role: 'trainer', subscribed: false },
-    t2: { name: 'Meera Nair', email: 'meera@demo.com', role: 'trainer', subscribed: false }, // second trainer, to check that trainers only see their own tests
-    s1: { name: 'Ananya Roy', email: 'student@demo.com', role: 'student', subscribed: false },
-    s2: { name: 'Rohan Kumar', email: 'pro@demo.com', role: 'student', subscribed: true },
+    a1: { name: 'Demo Admin', email: 'admin@demo.com', role: 'admin', subscribed: false, createdAt: Date.now() - 864e5 * 120, lastSignIn: Date.now() - 36e5 },
+    t1: { name: 'Demo Trainer', email: 'trainer@demo.com', role: 'trainer', subscribed: false, createdAt: Date.now() - 864e5 * 90, lastSignIn: Date.now() - 864e5 * 0.4 },
+    t2: { name: 'Meera Nair', email: 'meera@demo.com', role: 'trainer', subscribed: false, createdAt: Date.now() - 864e5 * 60, lastSignIn: Date.now() - 864e5 * 3 }, // second trainer, to check that trainers only see their own tests
+    s1: { name: 'Ananya Roy', email: 'student@demo.com', role: 'student', subscribed: false, createdAt: Date.now() - 864e5 * 40, lastSignIn: Date.now() - 864e5 * 1.2 },
+    s2: { name: 'Rohan Kumar', email: 'pro@demo.com', role: 'student', subscribed: true, createdAt: Date.now() - 864e5 * 45, lastSignIn: Date.now() - 864e5 * 0.2 },
   },
   questions: {
     q1: { title: 'Sum of two numbers', env: 'code', diff: 'Easy', topic: 'Math', authorId: 't1', statement: 'Read two integers on one line and print their sum.', starter: '',
@@ -81,20 +82,19 @@ const seed = () => addClass({
     tt6: { code: 'T-DM006', title: 'Loops timed test (30 min)', questionIds: ['q4', 'q5'], proctored: false, languages: ['python', 'js'], authorId: 't1', authorName: 'Demo Trainer', publishAt: Date.now() - 36e5, endAt: Date.now() + 864e5 * 3, durationMin: 30 },
     tt7: { code: 'T-DM007', title: 'Strings test (opens soon)', questionIds: ['q2'], proctored: false, authorId: 't1', authorName: 'Demo Trainer', publishAt: Date.now() + 864e5 * 2, endAt: Date.now() + 864e5 * 5, durationMin: 45 },
     tt8: { code: 'T-DM008', title: 'Warm-up test (closed)', questionIds: ['q1'], proctored: false, authorId: 't1', authorName: 'Demo Trainer', publishAt: Date.now() - 864e5 * 6, endAt: Date.now() - 864e5 * 2, durationMin: 20 },
-    tt9: { code: 'T-DM009', title: 'Arrays practice (draft)', questionIds: ['q6', 'q7'], proctored: false, authorId: 't1', authorName: 'Demo Trainer', draft: true, durationMin: 40 },
+    tt9: { code: 'T-DM009', title: 'Arrays practice', questionIds: ['q6', 'q7'], proctored: false, authorId: 't1', authorName: 'Demo Trainer', draft: true, durationMin: 40 },
   },
   courses: { c1: { code: 'C-DM001', title: 'Coding Foundations', description: 'Python, C++ and the web.', trainerId: 't1', trainerName: 'Demo Trainer', students: ['s1', 's2'], testIds: ['tt1', 'tt2'], joins: [{ uid: 's2', at: Date.now() - 864e5 * 30 }, { uid: 's1', at: Date.now() - 864e5 * 9 }] },
     c2: { code: 'C-DM002', title: 'Web Basics', description: 'HTML and CSS from scratch, with small build-it exercises.', trainerId: 't1', trainerName: 'Demo Trainer', students: ['s2'], testIds: ['tt3'] },
     c3: { code: 'C-DM003', title: 'Python Practice', description: 'Short Python quizzes to build speed with loops, strings and numbers.', trainerId: 't1', trainerName: 'Demo Trainer', students: ['s1', 's2'], testIds: ['tt4', 'tt6', 'tt7', 'tt8'] },
     c4: { code: 'C-DM004', title: 'Data Structures', description: 'Lists, stacks and queues with hands-on problems.', trainerId: 't2', trainerName: 'Meera Nair', students: ['s2'], testIds: ['tt5'] } },
   leaderboard: {
-    s2: { name: 'Rohan Kumar', xp: 240, streak: 5, lastDay: '' },
-    p1: { name: 'Priya Banerjee', xp: 310, streak: 9, lastDay: '' },
-    p2: { name: 'Sneha Mukherjee', xp: 180, streak: 3, lastDay: '' },
-    p3: { name: 'Imran Sheikh', xp: 90, streak: 1, lastDay: '' },
+    s2: { name: 'Rohan Kumar', points: 250, streak: 5, lastDay: '' },
+    p1: { name: 'Priya Banerjee', points: 300, streak: 9, lastDay: '' },
+    p2: { name: 'Sneha Mukherjee', points: 150, streak: 3, lastDay: '' },
+    p3: { name: 'Imran Sheikh', points: 100, streak: 1, lastDay: '' },
   },
-  notifications: { n1: { userId: 's1', text: 'New test "Week 1 basics" in Coding Foundations', link: '/test/c1/tt1', read: false, at: Date.now() - 36e5 } },
-  payments: { pay1: { userId: 's2', userName: 'Rohan Kumar', courseId: 'c1', courseTitle: 'Coding Foundations', amount: 1999, at: Date.now() - 864e5 * 3 } },
+  payments: { pay1: { userId: 's2', userName: 'Rohan Kumar', kind: 'pro', amount: 499, at: Date.now() - 864e5 * 3 } },
   submissions: {
     s2_tt2_q4: { userId: 's2', testId: 'tt2', questionId: 'q4', passed: 3, total: 3, at: Date.now() - 864e5 * 6, code: 's = input()\nprint(s[::-1])\n' },
     s2_tt2_q5: { userId: 's2', testId: 'tt2', questionId: 'q5', passed: 2, total: 3, at: Date.now() - 864e5 * 6, code: 'n = int(input())\nprint("even" if n % 2 == 0 else "odd")\n' },
@@ -104,9 +104,44 @@ const seed = () => addClass({
     s2_tt1_q1: { userId: 's2', testId: 'tt1', questionId: 'q1', passed: 3, total: 3, at: Date.now() - 864e5 * 2, code: 'a, b = map(int, input().split())\nprint(a + b)\n' } },
 });
 
+// 1000 generated practice questions so Problems paging, filters and search can be tried at scale. Every 25th is private.
+// Added to existing demo data too (ids g0001…g1000), so no reset is needed. Each one is solvable: the tests match the statement.
+const TEMPLATES = [
+  ['Add {k}', 'Math', 'Easy', 'Read an integer n and print n + {k}.', '-10^9 <= n <= 10^9\nn is a whole number', k => [[5, 5 + k], [0, k], [-3, -3 + k]]],
+  ['Multiply by {k}', 'Math', 'Easy', 'Read an integer n and print n * {k}.', '-10^6 <= n <= 10^6\nn is a whole number', k => [[4, 4 * k], [0, 0], [-2, -2 * k]]],
+  ['Remainder by {k}', 'Math', 'Medium', 'Read a non-negative integer n and print n mod {k}.', '0 <= n <= 10^9', k => [[100, 100 % k], [k, 0], [7 * k + 1, 1]]],
+  ['Repeat a word {k} times', 'Strings', 'Medium', 'Read a word and print it {k} times with no spaces.', '1 <= length of the word <= 20\nThe word has lowercase letters only', k => [['ab', 'ab'.repeat(k)], ['x', 'x'.repeat(k)], ['hi', 'hi'.repeat(k)]]],
+  ['Sum 1 to n, plus {k}', 'Loops', 'Hard', 'Read n (n >= 0) and print 1 + 2 + … + n, plus {k}.', '0 <= n <= 10^5', k => [[3, 6 + k], [0, k], [10, 55 + k]]],
+];
+// Constraints for the hand-written demo questions; also filled into demo data saved before they existed.
+const CONSTRAINTS = {
+  q1: '-10^9 <= a, b <= 10^9\nBoth numbers are on one line, separated by a space',
+  q3: '-10^6 <= n <= 10^6',
+  q5: '0 <= n <= 10^9',
+  q6: '0 <= length of the line <= 1000\nWords are separated by one or more spaces',
+};
+function addBulk(d) {
+  Object.entries(CONSTRAINTS).forEach(([id, c]) => { if (d.questions[id] && !d.questions[id].constraints) d.questions[id].constraints = c; });
+  if (d.questions.g0001) { Object.values(d.questions).forEach((q, _, __, m = /^(Add|Multiply by|Remainder by|Repeat a word|Sum 1 to n)/.exec(q.title)) => { if (m && !q.constraints) q.constraints = TEMPLATES.find(t => t[0].startsWith(m[1]))?.[4]; }); return d; }
+  const now = Date.now();
+  for (let i = 1; i <= 1000; i++) {
+    const id = 'g' + String(i).padStart(4, '0'), k = Math.floor(i / 10) + 2;
+    if (i % 8 === 0) { // web page questions
+      const word = `Title ${i}`;
+      d.questions[id] = { title: `Heading that says ${word}`, env: 'web', diff: i % 16 ? 'Easy' : 'Medium', topic: 'HTML & CSS', authorId: i % 2 ? 't1' : 't2', statement: `Create an h1 whose text is ${word}.`, starter: '',
+        tests: [{ desc: `The h1 says ${word}`, expr: `document.querySelector('h1')?.textContent.trim() === '${word}'` }], createdAt: now - i * 6e4, ...(i % 25 ? {} : { public: false }) };
+      continue;
+    }
+    const [title, topic, diff, st, cons, cases] = TEMPLATES[i % TEMPLATES.length];
+    d.questions[id] = { title: `${title.replace('{k}', k)} (#${i})`, env: 'code', diff, topic, authorId: i % 2 ? 't1' : 't2', statement: st.replaceAll('{k}', k), constraints: cons,
+      tests: cases(k).map(([a, b], j) => ({ input: String(a), output: String(b), ...(j === 2 ? { hidden: true } : {}) })), createdAt: now - i * 6e4, ...(i % 25 ? {} : { public: false }) };
+  }
+  return d;
+}
+
 let data;
 try { data = JSON.parse(localStorage.getItem(KEY)); } catch { /* fall through to seed */ }
-data ||= seed();
+data = addBulk(data || seed());
 
 export const db0 = data;
 export const session = { uid: localStorage.getItem(KEY + '-uid') };

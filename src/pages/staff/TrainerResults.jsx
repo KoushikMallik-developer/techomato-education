@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
-import { inCourse } from '../../score.js';
+import { averageScore, inCourse } from '../../score.js';
 import { courseCode, statusOf, testCode } from '../../schedule.js';
 import { db, list, listIn, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { plural, Empty, Icon, Loading, useLoad, Card, btn, Chip, Bar, H3, SearchBox } from '../../ui.jsx';
+import { plural, Empty, Icon, Loading, useLoad, Card, btn, Chip, Bar, H3, SearchBox, PageHero } from '../../ui.jsx';
 import { Pick, FilterBar, matches, createdOf, STATUS_BADGE, pct, barColor } from './trainerShared.jsx';
 
 // Results for the tests this trainer wrote: a summary, filters, then one card per test, grouped by course.
@@ -21,7 +21,8 @@ export function TrainerResults() {
     const mine = new Set(tests.map(t => t.id));
     const ids = [...new Set(courses.flatMap(c => c.testIds))].filter(t => mine.has(t));
     const subs = await listIn(ids, x => query(collection(db, 'submissions'), where('testId', 'in', x)));
-    return { courses, tests, subs, bank: new Set((await questions()).map(q => q.id)) };
+    const all = await questions();
+    return { courses, tests, subs, bank: new Set(all.map(q => q.id)), cases: Object.fromEntries(all.map(q => [q.id, q.tests.length])) };
   });
   if (!d) return <Loading />;
   if (!d.courses.length) return <Empty title="No courses assigned to you yet" />;
@@ -32,9 +33,8 @@ export function TrainerResults() {
     if (!t) return null;
     const subs = d.subs.filter(s => s.testId === tid && c.students.includes(s.userId) && inCourse(s, c.id));
     const who = new Set(subs.map(s => s.userId));
-    const total = subs.reduce((n, s) => n + s.total, 0), passed = subs.reduce((n, s) => n + s.passed, 0);
     const status = statusOf(t, d.bank, 1); // every entry here is in a course
-    return { c, t, who, subs, avg: pct(passed, total), status };
+    return { c, t, who, subs, avg: averageScore(subs, [t], d.cases), status };
   })).filter(e => e && (e.status === 'open' || e.status === 'closed')); // results exist only once a test has started: drafts and scheduled tests are left out
 
   const sorts = { name: (a, b) => a.t.title.localeCompare(b.t.title), high: (a, b) => (b.avg ?? -1) - (a.avg ?? -1), low: (a, b) => (a.avg ?? 101) - (b.avg ?? 101),
@@ -45,6 +45,11 @@ export function TrainerResults() {
 
   return (
     <div className="flex flex-col gap-5">
+      {(() => { const subs = entries.flatMap(e => e.subs), avg = averageScore(subs, entries.map(e => e.t), d.cases); return (
+        <PageHero compact title="Results"
+          stats={[['clip', 'Tests', entries.length, 'open or closed'], ['users', 'Students tested', new Set(entries.flatMap(e => [...e.who])).size, 'took at least one'], ['check', 'Submissions', subs.length, 'answers saved']]}
+          ring={{ pct: avg ?? 0, big: avg === null ? '-' : `${avg}%`, small: 'average student score' }} />
+      ); })()}
       <SearchBox label="Search results" placeholder="Search by test, test ID or course" value={text} onChange={setText} />
       <FilterBar changed={JSON.stringify(f) !== JSON.stringify(none)} onReset={() => setF(none)}>
         <Pick label="Proctoring" value={f.proc} onChange={v => setF({ ...f, proc: v })} options={[['all', 'Proctored or not'], ['yes', 'Proctored'], ['no', 'Not proctored']]} />
@@ -64,8 +69,8 @@ export function TrainerResults() {
             </summary>
             <div className="flex flex-col gap-3 p-4 [:where(&)_.fact]:bg-surface">
             <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2.5">{(() => { // a summary of this course's tests that are listed
-              const all = rows.flatMap(r => r.subs), taking = new Set(rows.flatMap(r => [...r.who])).size, overall = pct(all.reduce((n, x) => n + x.passed, 0), all.reduce((n, x) => n + x.total, 0));
-              return [['Tests', rows.length, 'open or closed'], ['Students', c.students.length, 'in this course'], ['Students taking tests', taking, `of ${c.students.length}`], ['Average result', overall === null ? 'None' : `${overall}%`, 'of all submitted answers']].map(([k, v, hint]) => (
+              const all = rows.flatMap(r => r.subs), taking = new Set(rows.flatMap(r => [...r.who])).size, overall = averageScore(all, rows.map(r => r.t), d.cases);
+              return [['Tests', rows.length, 'open or closed'], ['Students', c.students.length, 'in this course'], ['Students taking tests', taking, `of ${c.students.length}`], ['Average student score', overall === null ? 'None' : `${overall}%`, 'students who answered']].map(([k, v, hint]) => (
                 <div key={k} className="fact flex flex-col gap-0.5 py-2 px-3.5 bg-soft rounded-sm"><span className="text-[13px] text-muted">{k}</span><b className="text-[26px] leading-[1.1]">{v}</b><span className="text-[13px] text-muted">{hint}</span></div>
               ));
             })()}</div>
@@ -92,7 +97,7 @@ export function TrainerResults() {
                     {avg === null ? <b className="text-[22px] leading-[1.1] text-muted">None yet</b> : (
                       <>
                         <b className="text-[22px] leading-[1.1]">{avg}%</b>
-                        <Bar pct={avg} color={barColor(avg)} role="img" aria-label={`Average result ${avg}%`} />
+                        <Bar pct={avg} color={barColor(avg)} role="img" aria-label={`Average student score ${avg}%`} />
                       </>
                     )}
                   </div>

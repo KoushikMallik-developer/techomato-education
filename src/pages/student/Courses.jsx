@@ -4,8 +4,9 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db, list, listIn, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { Bar, CourseGrid, Empty, Icon, Loading, useBusy, useLoad, Chip, btn, Card, H3, H2, Back, SearchBox } from '../../ui.jsx';
+import { LEVEL_TONE, Bar, CourseGrid, Empty, Icon, Loading, useBusy, useLoad, Chip, btn, Card, H3, H2, Back, SearchBox, PageHero, heroBtn, heroLink, plural } from '../../ui.jsx';
 import { get, mySubs } from './data.js';
+import { payRewards } from './rewards.js';
 import { Confirm } from '../staff/trainerShared.jsx';
 import * as proctor from '../../proctor.js';
 import { ProctorStart, useProctor } from '../../ProctorGuard.jsx';
@@ -59,11 +60,19 @@ export function Courses() {
   };
   return (
     <div className="flex flex-col gap-7">
+      {(() => {
+        const joined = d.all.filter(mine), avg = joined.length ? Math.round(joined.reduce((n, c) => n + prog[c.id].pct, 0) / joined.length) : 0;
+        const tried = joined.reduce((n, c) => n + prog[c.id].tried, 0), total = joined.reduce((n, c) => n + prog[c.id].total, 0);
+        return <PageHero pill="Courses" title="Keep learning."
+          stats={[['book', 'Joined', joined.length, `of ${d.all.length} courses`], ['check', 'Completed', joined.filter(c => prog[c.id].done).length, 'marked by trainer'], ['clip', 'Questions', `${tried}/${total}`, 'attempted']]}
+          ring={{ pct: avg, big: `${avg}%`, small: 'average progress' }}
+          actions={<><Link to="/tests" className={heroBtn}>Go to my tests<span className="transition-transform duration-200 group-hover/go:translate-x-1"><Icon name="arrow" size={18} stroke={2.4} /></span></Link><Link to="/results" className={heroLink}>See my results →</Link></>} />;
+      })()}
       <SearchBox label="Search courses" placeholder="Search courses by name, topic or trainer" value={q} onChange={setQ} wide />
       {shown.length === 0 ? <Empty title={q ? 'No courses match your search' : 'No courses yet'} body={q ? 'Try a different word.' : 'Courses your admin creates will show up here.'} /> : (
         <>
           <Section title="Joined courses" count={learning.length} hint="in progress">
-            <CourseGrid courses={learning} extra={extra} empty={q ? 'None of your joined courses match' : "You haven't joined a course yet. Ask your admin once you've paid."} />
+            <CourseGrid courses={learning} extra={extra} empty={q ? 'None of your joined courses match' : "You haven't joined a course yet. Ask your admin to enroll you."} />
           </Section>
           <Section title="Completed courses" count={finished.length} hint="marked completed by the trainer">
             <CourseGrid courses={finished} extra={extra} empty={q ? 'None of your completed courses match' : 'Courses your trainer marks as completed move here.'} />
@@ -77,7 +86,6 @@ export function Courses() {
   );
 }
 
-const Tile = ({ n, label }) => <div className="bg-paper rounded-[14px] p-4 flex flex-col gap-2 justify-between"><div className="text-[13px] text-muted">{label}</div><div className="big font-display font-extrabold tracking-[-.03em] leading-none text-[28px]">{n}</div></div>;
 
 export function CourseView() {
   const { id } = useParams();
@@ -100,22 +108,10 @@ export function CourseView() {
   return (
     <div className="flex flex-col gap-5">
       <Back to="/courses">All courses</Back>
-      <Card className="flex flex-col gap-4">
-        <div className="flex items-center flex-wrap gap-2">
-          <Chip as="span">Trainer: {course.trainerName}</Chip>
-          <Chip as="span" className="font-mono">Course ID {courseCode(course)}</Chip>
-          {joined ? (p.done ? <Chip tone="pass"><Icon name="check" size={14} stroke={2.4} />Completed</Chip> : <Chip tone="accent">Joined</Chip>) : <Chip tone="warn">Not enrolled</Chip>}
-        </div>
-        <H2 className="text-[40px]">{course.title}</H2>
-        <p className="text-ink-2 m-0 text-[17px] max-w-[70ch]">{course.description}</p>
-        <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
-          <Tile n={course.students?.length || 0} label="Students" />
-          <Tile n={tests.length} label={tests.length === 1 ? 'Test' : 'Tests'} />
-          <Tile n={qs.length} label={qs.length === 1 ? 'Question' : 'Questions'} />
-          <Tile n={envs.length && envs.length <= 4 ? <span className="flex flex-wrap gap-1.5 text-[13px] tracking-normal font-sans leading-normal">{envs.map(e => <Chip tone="pass" key={e}>{e}</Chip>)}</span> : envs.length} label={envs.length === 1 ? 'Language' : 'Languages'} />
-        </div>
-        {!joined && <p className="rounded-[14px] bg-pass-soft text-pass py-3 px-4 font-semibold text-[14px] flex gap-2.5 items-center m-0"><Icon name="shield" size={18} />You are not enrolled in this course. Ask your admin to enroll you once you have paid, then its tests will appear here.</p>}
-      </Card>
+      <PageHero name={`course-${course.id}`} pill={`Course · ${courseCode(course)}${joined ? (p.done ? ' · Completed' : ' · Joined') : ' · Not enrolled'}`} title={course.title} text={course.description}
+        stats={[['users', 'Students', course.students?.length || 0, `trainer: ${course.trainerName}`], ['clip', tests.length === 1 ? 'Test' : 'Tests', tests.length, plural(qs.length, 'question')], ['code', envs.length === 1 ? 'Language' : 'Languages', envs.length, envs.join(', ')]]}
+        ring={joined ? { pct: p.pct, big: `${p.pct}%`, small: 'questions answered' } : undefined} />
+      {!joined && <p className="rounded-[14px] bg-pass-soft text-pass py-3 px-4 font-semibold text-[14px] flex gap-2.5 items-center m-0"><Icon name="shield" size={18} />You are not enrolled in this course. Ask your admin to enroll you, then its tests will appear here.</p>}
       {joined && (tests.length === 0 ? <Empty title="No tests assigned yet" body="Your trainer has not added a test to this course yet." /> : tests.map(t => {
         const mine = subs.filter(s => s.testId === t.id), done = mine.length, last = Math.max(0, ...mine.map(x => x.at?.toMillis?.() ?? x.at ?? 0)); // `at` is a number in demo mode and a Timestamp in Firebase
         return (
@@ -180,15 +176,15 @@ export function TestView() {
           <span className="text-muted">{finished ? 'You have submitted this test. Only one attempt is allowed, so it cannot be opened again.' : 'The timer for this test ran out, so it cannot be opened again.'}</span>
         </div>
         <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
-          <div className="bg-panel text-cream rounded-lg p-[22px] flex flex-col gap-3">
-            <div className="text-[13px] text-on-dark-2">Your score</div>
-            <div className="font-display font-extrabold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{pct}%</div>
-            <Bar pct={pct} fill="bg-rose" track="bg-[#3A3D45]" aria-hidden="true" />
+          <div className="bg-accent text-on-accent rounded-xl p-5 flex flex-col gap-3 shadow-[0_1px_2px_rgba(23,24,28,.12)]">
+            <div className="text-[13px] font-medium opacity-85">Your score</div>
+            <div className="font-display font-bold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{pct}%</div>
+            <Bar pct={pct} fill="bg-on-accent" track="bg-on-accent/25" aria-hidden="true" />
           </div>
           {[['Test cases passed', `${passed}/${total}`], ['Questions fully solved', `${d.qs.filter(q => { const x = d.subs.find(r => r.questionId === q.id); return x && x.passed === x.total; }).length}/${d.qs.length}`], ['Questions answered', `${done}/${d.qs.length}`]].map(([l, v]) => (
             <Card key={l} className="flex flex-col gap-3 justify-between">
               <div className="text-[13px] text-muted">{l}</div>
-              <div className="font-display font-extrabold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{v}</div>
+              <div className="font-display font-bold tracking-[-.03em] leading-none text-[42px] max-phone:text-[32px]">{v}</div>
             </Card>
           ))}
         </div>
@@ -220,7 +216,7 @@ export function TestView() {
   }
   const needStart = d.test.proctored && !exam && (!stop || stop === 'start');
   const locked = needStart || !!stop;
-  const submitTest = async () => { await proctor.fillUnanswered(me.uid, courseId, testId, d.test.questionIds); await proctor.recordFinish(me.uid, courseId, testId, !!d.test.proctored); if (exam) proctor.stop(true); nav(back.to); };
+  const submitTest = async () => { await proctor.fillUnanswered(me.uid, courseId, testId, d.test.questionIds); await proctor.recordFinish(me.uid, courseId, testId, !!d.test.proctored); if (exam) proctor.stop(true); await payRewards(me).catch(() => {}); nav(back.to); };
   return (
     <div className="flex flex-col gap-5">
       {!exam && <Back to={back.to}>{back.label}</Back>}
@@ -233,33 +229,73 @@ export function TestView() {
       {stop === 'soon' && <Card><b>Opens {when(d.test.publishAt)}.</b> <span className="text-muted">You can start from then.</span></Card>}
       {stop === 'closed' && <Card><b>This test closed on {when(d.test.endAt)}.</b> <span className="text-muted">It can no longer be started.</span></Card>}
       {stop === 'start' && !d.test.proctored && (
-        <Card className="flex flex-col gap-3 max-w-[700px]">
-          <H3 as="h2" className="text-[24px]">{d.test.durationMin} minutes</H3>
-          <p className="text-muted m-0">The timer starts when you press Start and keeps running if you close this page. Come back before it reaches zero to carry on. You can start until {when(d.test.endAt)}.</p>
-          <div><button className={btn('accent', 'lg')} disabled={busy} onClick={() => run(att.start)}>{busy ? 'Starting…' : 'Start test'}</button></div>
+        <Card className="flex flex-col gap-6 w-full">
+          <div className="flex flex-col gap-1">
+            <H3 as="h2" className="text-[24px]">Before you start</H3>
+            <span className="text-muted">The questions open when you press Start, and so does your timer.</span>
+          </div>
+          <dl className="m-0 grid gap-3 grid-cols-4 max-laptop:grid-cols-2 max-phone:grid-cols-1">
+            {[['clip', 'Questions', plural(d.qs.length, 'question'), ['Easy', 'Medium', 'Hard'].map(l => [l, d.qs.filter(q => q.diff === l).length]).filter(x => x[1]).map(([l, n]) => `${n} ${l.toLowerCase()}`).join(' · ')],
+              ['clock', 'Time limit', `${d.test.durationMin} minutes`, 'from when you press Start'],
+              ...(d.qs.some(q => q.env !== 'web') ? [['code', 'Languages', langsOf(d.test).map(l => LANGS[l]).join(', '), 'pick one in the editor']] : []),
+              ['target', 'Start by', when(d.test.endAt), 'last time you can start']].map(([icon, l, v, small]) => (
+              <div key={l} className="rounded-xl border border-line bg-surface p-4 flex items-start gap-3 min-w-0">
+                <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0 bg-accent-soft text-accent-ink"><Icon name={icon} size={18} /></span>
+                <div className="flex flex-col gap-0.5 min-w-0"><dt className="text-[13px] text-muted">{l}</dt><dd className="m-0 font-bold text-[16px] leading-tight">{v}</dd>{small && <dd className="m-0 text-[12px] text-muted">{small}</dd>}</div>
+              </div>
+            ))}
+          </dl>
+          <div className="grid gap-4 grid-cols-3 max-laptop:grid-cols-1">
+            {[['clock', 'The timer keeps running', 'It does not pause if you close this page. Come back before it reaches zero to carry on.'],
+              ['lock', 'One attempt', 'When you submit the test, or the time runs out, it cannot be opened again.'],
+              ['check', 'Check before you submit', 'Make sure you have answered every question before you submit the test. A question left blank scores 0.']].map(([icon, title, text]) => (
+              <div key={title} className="bg-paper rounded-[14px] p-4 flex flex-col gap-2">
+                <Icon name={icon} size={20} />
+                <b>{title}</b>
+                <span className="text-[13px] text-muted leading-normal">{text}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 flex-wrap pt-5 border-t border-line">
+            <button className={btn('accent', 'lg')} disabled={busy} onClick={() => run(att.start)}><Icon name="play" size={18} />{busy ? 'Starting…' : 'Start test'}</button>
+            <span className="text-[13px] text-muted">Your {d.test.durationMin}-minute timer starts straight away.</span>
+          </div>
         </Card>
       )}
       {needStart && <>
         <ProctorStart courseId={courseId} testId={testId} questionIds={d.test.questionIds} before={isTimed ? att.start : undefined} />
       </>}
-      {!locked && <Card className="p-1.5">
-        {d.qs.map((q, i) => {
-          const s = d.subs.find(x => x.questionId === q.id);
-          return (
-            <Link key={q.id} to={`/solve/${courseId}/${testId}/${q.id}`} className="group/rl flex items-center justify-between gap-3 p-3 rounded-xl no-underline hover:bg-soft [&+&]:border-t [&+&]:border-line [&+&]:rounded-t-none hover:border-t-transparent [&:hover+&]:border-t-transparent">
-              <span className="flex items-center gap-3">
-                {s && s.passed === s.total ? <Icon name="check" size={18} stroke={2.4} color="var(--pass-strong)" /> : <span className="w-4.5" />}
-                <span className="font-semibold">{i + 1}. {q.title}</span>
-              </span>
-              <span className="flex items-center gap-3 text-[13px]">
-                <Chip as="span">{typeLabel(q)}</Chip>
-                {s ? <span className="font-mono font-bold" style={{ color: s.passed === s.total ? 'var(--pass)' : 'var(--warn)' }}>{s.passed}/{s.total}</span> : <span className="text-muted">Not attempted</span>}
-              </span>
-            </Link>
-          );
-        })}
-      </Card>}
-      {!stop && !needStart && <div><button className={btn('accent')} onClick={() => setAsking(true)}>Submit test</button></div>}
+      {!locked && (
+        <Card as="section" className="p-0 overflow-hidden" aria-labelledby="qs-head">
+          <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-4 border-b border-line">
+            <H3 as="h2" id="qs-head" className="text-[18px]">Questions</H3>
+            <span className="flex items-center gap-3 text-[13px] text-muted min-w-[200px]">
+              <span className="whitespace-nowrap"><b className="text-ink">{done}</b> of {d.qs.length} answered</span>
+              <span className="grow"><Bar pct={d.qs.length ? (100 * done) / d.qs.length : 0} aria-hidden="true" /></span>
+            </span>
+          </div>
+          {d.qs.map((q, i) => {
+            const s = d.subs.find(x => x.questionId === q.id), full = s && s.passed === s.total;
+            return (
+              <Link key={q.id} to={`/solve/${courseId}/${testId}/${q.id}`} className="group/rl flex items-center gap-4 px-5 py-4 min-h-16 no-underline text-ink border-b border-line last:border-b-0 hover:bg-soft">
+                <span className={`w-8 h-8 rounded-full grid place-items-center shrink-0 text-[13px] font-bold ${full ? 'bg-pass-soft text-pass' : s ? 'bg-warn-soft text-warn' : 'bg-soft text-muted border border-line'}`}>{full ? <Icon name="check" size={15} stroke={2.6} /> : i + 1}</span>
+                <span className="flex flex-col min-w-0 grow">
+                  <b className="truncate">{q.title}</b>
+                  <span className="flex items-center gap-1.5 flex-wrap mt-1">{q.diff && <Chip tone={LEVEL_TONE[q.diff]}>{q.diff}</Chip>}<Chip>{typeLabel(q)}</Chip></span>
+                </span>
+                <span className="text-[13px] text-right shrink-0">{s ? <><b className="font-mono" style={{ color: full ? 'var(--pass)' : 'var(--warn)' }}>{s.passed}/{s.total}</b><span className="block text-muted">cases passed</span></> : <span className="text-muted">Not answered</span>}</span>
+                <span className="text-muted transition-transform group-hover/rl:translate-x-0.5"><Icon name="arrow" size={18} /></span>
+              </Link>
+            );
+          })}
+          {!stop && !needStart && (
+            <div className="flex items-center gap-4 flex-wrap px-5 py-4 border-t border-line bg-paper">
+              <button className={btn('accent')} onClick={() => setAsking(true)}>Submit test</button>
+              <span className="text-[13px] text-muted">{done < d.qs.length ? `${plural(d.qs.length - done, 'question')} not answered yet; ${d.qs.length - done === 1 ? 'it scores' : 'they score'} 0 if you submit now.` : 'Every question has an answer. Submit when you are happy with them.'}</span>
+            </div>
+          )}
+        </Card>
+      )}
       {asking && <Confirm title="Submit this test?" body={`Questions you have not answered score 0, and you will not be able to open the test again.${exam ? ' The exam ends now.' : ''}`} label="Submit test" onYes={submitTest} onClose={() => setAsking(false)} />}
     </div>
   );

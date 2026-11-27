@@ -1,45 +1,16 @@
+import { Profile } from './student/Profile.jsx';
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { sendPasswordResetEmail, signOut, updatePassword } from 'firebase/auth';
 import { collection, doc, query, updateDoc, where } from 'firebase/firestore';
 import { auth, db, list, questions } from '../firebase.js';
 import { useMe } from '../auth.jsx';
 import { isPublic } from './student/data.js';
 import { courseCode, testCode, typeLabel } from '../schedule.js';
-import { Btn, Empty, Field, Icon, Loading, Logo, attempt, notify, useBusy, useLoad, btn, Card, Chip, H3, Input, H2 } from '../ui.jsx';
+import { Btn, Empty, Field, Icon, Loading, Logo, attempt, notify, useBusy, useLoad, btn, Card, Chip, H3, Input, H2, PageHero } from '../ui.jsx';
 
-/* ---------- notifications ---------- */
-const ago = t => { const m = Math.max(1, Math.round((Date.now() - t) / 60000)); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
-export function Notifications() {
-  const me = useMe();
-  const nav = useNavigate();
-  const [rows, reload] = useLoad(() => list(query(collection(db, 'notifications'), where('userId', '==', me.uid))));
-  if (!rows) return <Loading />;
-  const sorted = [...rows].sort((a, b) => b.at - a.at);
-  const open = n => attempt(async () => { if (!n.read) await updateDoc(doc(db, 'notifications', n.id), { read: true }); dispatchEvent(new Event('tk-notifs')); if (n.link) nav(n.link); else reload(); });
-  const readAll = () => attempt(async () => { await Promise.all(rows.filter(n => !n.read).map(n => updateDoc(doc(db, 'notifications', n.id), { read: true }))); dispatchEvent(new Event('tk-notifs')); reload(); });
-  return (
-    <div className="flex flex-col gap-4 max-w-[760px]">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted m-0">{rows.filter(n => !n.read).length} unread</p>
-        <button className={btn('ghost', 'sm')} onClick={readAll} disabled={!rows.some(n => !n.read)}>Mark all read</button>
-      </div>
-      {sorted.length === 0 ? <Empty title="You're all caught up" body="New tests and enrollments will show up here." /> : (
-        <Card className="p-1.5">
-          {sorted.map(n => (
-            <button key={n.id} className="group/rl flex items-center justify-between gap-3 p-3 rounded-xl no-underline [&+&]:border-t [&+&]:border-line [&+&]:rounded-t-none hover:border-t-transparent [&:hover+&]:border-t-transparent w-[100%] [border:0px] bg-transparent text-left" onClick={() => open(n)}>
-              <span className="flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-[99px] shrink-0" style={{ background: n.read ? 'transparent' : 'var(--accent)' }} />
-                <span style={{ fontWeight: n.read ? 400 : 600 }}>{n.text}</span>
-              </span>
-              <span className="text-[13px] text-muted whitespace-nowrap">{ago(n.at)}</span>
-            </button>
-          ))}
-        </Card>
-      )}
-    </div>
-  );
-}
+// Section title with a small icon tile, used on the Settings cards.
+const Head = ({ icon, children, hint }) => <div className="flex items-start gap-3"><span className="w-10 h-10 rounded-xl bg-accent-soft text-accent-ink grid place-items-center shrink-0"><Icon name={icon} size={18} /></span><span className="flex flex-col gap-0.5"><H3 className="text-[18px]">{children}</H3>{hint && <span className="text-[13px] text-muted">{hint}</span>}</span></div>;
 
 /* ---------- settings ---------- */
 export const applyTheme = t => { if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t; };
@@ -50,25 +21,32 @@ export function Settings() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tk-theme') || 'system'; } catch { return 'system'; } });
   const pick = t => { setTheme(t); applyTheme(t); try { localStorage.setItem('tk-theme', t); } catch { /* private mode: theme just won't persist */ } };
   return (
-    <div className="flex flex-col gap-4 max-w-[640px]">
-      <Card as="form" className="flex flex-col gap-3.5" onSubmit={e => { e.preventDefault(); attempt(async () => { await updateDoc(doc(db, 'users', me.uid), { name: name.trim() }); await updateDoc(doc(db, 'leaderboard', me.uid), { name: name.trim() }).catch(() => {}); notify('Name updated'); }); }}>
-        <H3 className="text-[20px]">Profile</H3>
+    <div className="flex flex-col gap-5">
+      {me.role === 'student' ? <Profile /> : <PageHero title={me.name} stats={[['user', 'Email', me.email], ['shield', 'Role', me.role === 'admin' ? 'Admin' : 'Trainer']]} />}
+      <H3 as="h2" className="text-[20px] mt-2">Settings</H3>
+      <div className="grid gap-4 grid-cols-2 max-tablet:grid-cols-1 items-start">
+      <Card as="form" className="flex flex-col gap-4" onSubmit={e => { e.preventDefault(); attempt(async () => { await updateDoc(doc(db, 'users', me.uid), { name: name.trim() }); await updateDoc(doc(db, 'leaderboard', me.uid), { name: name.trim() }).catch(() => {}); notify('Name updated'); }); }}>
+        <Head icon="user" hint="Shown on the leaderboard and to your trainers">Name</Head>
         <Field label="Display name"><Input required disabled={me.role !== 'student'} value={name} onChange={e => setName(e.target.value)} /></Field>
         {me.role !== 'student' && <span className="text-[13px] text-muted">Ask an admin to change your name: it is shown on course pages.</span>}
         <div className="text-[13px] text-muted">Signed in as {me.email}</div>
         <Btn v="ink" className="self-start" disabled={me.role !== 'student'}>Save name</Btn>
       </Card>
-      <Card as="section" className="flex flex-col gap-3">
-        <H3 className="text-[20px]">Appearance</H3>
+      <Card as="section" className="flex flex-col gap-4">
+        <Head icon="eye" hint="Follow your device, or always light or dark">Appearance</Head>
         <div className="seg flex flex-wrap gap-2 [:where(&)_button]:min-h-11 [:where(&)_button]:px-4 [:where(&)_button]:rounded-xl [:where(&)_button]:border-[1.5px] [:where(&)_button]:border-line [:where(&)_button]:bg-surface [:where(&)_button]:font-medium [:where(&)_button[aria-pressed=true]]:border-ink [:where(&)_button[aria-pressed=true]]:bg-ink [:where(&)_button[aria-pressed=true]]:text-paper [:where(&)_button[aria-pressed=true]]:font-semibold [:where(&)_button:disabled]:opacity-50 [:where(&)_button:disabled]:cursor-not-allowed">{[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => <button key={k} aria-pressed={theme === k} onClick={() => pick(k)}>{l}</button>)}</div>
       </Card>
-      <Card as="form" className="flex flex-col gap-3.5" onSubmit={e => { e.preventDefault(); attempt(async () => { await updatePassword(auth.currentUser, pw); setPw(''); notify('Password changed'); }); }}>
-        <H3 className="text-[20px]">Password</H3>
-        <Field label="New password (min 6)"><Input type="password" minLength={6} required autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} /></Field>
+      <Card as="form" className="flex flex-col gap-4" onSubmit={e => { e.preventDefault(); attempt(async () => { await updatePassword(auth.currentUser, pw); setPw(''); notify('Password changed'); }); }}>
+        <Head icon="lock" hint="At least 8 characters">Password</Head>
+        <Field label="New password (min 8)"><Input type="password" minLength={8} required autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} /></Field>
         <Btn v="ink" className="self-start">Change password</Btn>
         <span className="text-[13px] text-muted">If it says you need to log in again, log out and back in, then retry.</span>
       </Card>
-      <button className={btn('ghost', 'md', 'self-start')} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
+      <Card className="flex flex-col gap-4">
+        <Head icon="logout" hint="You can sign back in any time">Session</Head>
+        <button className={btn('ghost', 'md', 'self-start')} onClick={() => signOut(auth)}><Icon name="logout" size={18} />Log out</button>
+      </Card>
+      </div>
     </div>
   );
 }
@@ -140,7 +118,7 @@ export function Forgot() {
             </>
           ) : (
             <>
-              <p className="text-muted m-0">Enter the email your admin used for your account.</p>
+              <p className="text-muted m-0">Enter the email you log in with.</p>
               <Field label="Email"><Input type="email" required value={email} onChange={e => setEmail(e.target.value)} /></Field>
               <Btn v="ink" className="min-h-14! px-[30px]! text-[17px]!" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</Btn>
               <Link to="/login" className="text-[13px] flex items-center justify-center min-h-11">Back to log in</Link>

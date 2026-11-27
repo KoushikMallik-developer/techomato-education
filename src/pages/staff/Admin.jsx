@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { addDoc, collection, doc, getCountFromServer, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { createLogin, db, freeCode, list } from '../../firebase.js';
-import { Avatar, Btn, CourseGrid, Empty, Field, Icon, Loading, attempt, notify, plural, useBusy, useLoad, btn, Card, Chip, Input, H3 } from '../../ui.jsx';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db, freeCode, list } from '../../firebase.js';
+import { LineChart } from '../../Charts.jsx';
+import { series } from '../../score.js';
+import { ms } from './trainerShared.jsx';
+import { Avatar, Bar, Btn, CourseGrid, Field, Icon, Loading, notify, plural, useBusy, useLoad, Card, Input, H3, PageHero, heroBtn, btn } from '../../ui.jsx';
+
+// what a payment was for. Payments made before courses became free carry a course; hand-recorded ones may have a note.
+export const what = p => { const base = p.courseTitle ? `Course: ${p.courseTitle}` : p.kind === 'manual' ? 'Payment' : 'Pro subscription'; return p.note ? `${base} · ${p.note}` : base; };
+export const rupees = n => '₹' + (n || 0).toLocaleString('en-IN');
+export const TH = 'text-left text-[12px] uppercase tracking-[.08em] font-semibold text-muted py-3 px-4 border-b border-line';
+export const TD = 'py-3 px-4 border-b border-line text-[15px]';
+export const ROLE_TONE = { admin: 'accent', trainer: 'pass', student: 'soft' };
 
 export function AdminCourses() {
   const [data, reload] = useLoad(async () => ({ courses: await list(collection(db, 'courses')), users: await list(collection(db, 'users')) }));
@@ -25,10 +35,9 @@ export function AdminCourses() {
   };
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted m-0">Enroll students here once they've paid.</p>
-        <button className={btn('ink')} onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'Add course'}</button>
-      </div>
+      <PageHero compact title="Courses"
+        stats={[['book', 'Courses', data.courses.length, `${data.courses.filter(c => c.completed).length} completed`], ['users', 'Enrolled', data.courses.reduce((n, c) => n + c.students.length, 0), 'students in courses'], ['user', 'Trainers', trainers.length, 'can teach'], ['clip', 'Tests', data.courses.reduce((n, c) => n + (c.testIds?.length || 0), 0), 'assigned']]}
+        actions={<button className={heroBtn} onClick={() => setOpen(!open)}><Icon name={open ? 'x' : 'plus'} size={18} />{open ? 'Close' : 'Add course'}</button>} />
       {open && (
         <Card as="form" className="grid gap-4 grid-cols-3 max-tablet:grid-cols-1" onSubmit={add}>
           <Field label="Title"><Input required value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
@@ -47,116 +56,85 @@ export function AdminCourses() {
   );
 }
 
-export function AdminUsers() {
-  const [users, reload] = useLoad(() => list(collection(db, 'users')));
-  const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name: '', email: '', password: '', role: 'student' });
-  const [busy, run] = useBusy();
-  if (!users) return <Loading />;
-  const add = e => {
-    e.preventDefault();
-    run(async () => {
-      const uid = await createLogin(f.email, f.password);
-      if ((await getDoc(doc(db, 'users', uid))).exists()) throw new Error('That email already has an account.');
-      await setDoc(doc(db, 'users', uid), { name: f.name, email: f.email, role: f.role, subscribed: false });
-      setF({ name: '', email: '', password: '', role: 'student' });
-      setOpen(false);
-      notify('User created. Share the password with them.');
-      reload();
-    });
-  };
-  const toggle = u => attempt(async () => { await updateDoc(doc(db, 'users', u.id), { subscribed: !u.subscribed }); reload(); });
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted m-0">Subscribed students can resubmit answers. Free students get one attempt per question.</p>
-        <button className={btn('ink')} onClick={() => setOpen(!open)}><Icon name="plus" size={18} />{open ? 'Close' : 'Add user'}</button>
-      </div>
-      {open && (
-        <Card as="form" className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2" onSubmit={add}>
-          <Field label="Name"><Input required value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
-          <Field label="Email"><Input type="email" required value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></Field>
-          <Field label="Password (min 6)"><Input minLength={6} required value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></Field>
-          <Field label="Role">
-            <Input as="select" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
-              <option value="student">Student</option><option value="trainer">Trainer</option>
-            </Input>
-          </Field>
-          <div><Btn v="accent" disabled={busy}>Create user</Btn></div>
-        </Card>
-      )}
-      <Card className="overflow-x-auto p-1.5">
-        <table className="border-collapse w-full">
-          <thead><tr><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Name</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Email</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Role</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Subscribed</th></tr></thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td className="p-3 border-b border-line text-[15px]"><span className="flex items-center gap-2.5"><Avatar name={u.name} size={32} /><b>{u.name}</b></span></td>
-                <td className="p-3 border-b border-line text-[15px] text-muted">{u.email}</td>
-                <td className="p-3 border-b border-line text-[15px]"><Chip as="span" className="[text-transform:capitalize]">{u.role}</Chip></td>
-                <td className="p-3 border-b border-line text-[15px]">{u.role === 'student' ? <button className="relative w-12 h-7 rounded-full border-0 bg-line shrink-0 transition-[background] duration-150 after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:w-[22px] after:h-[22px] after:rounded-full after:bg-white after:transition-transform after:duration-150 aria-checked:bg-ink aria-checked:after:translate-x-5" role="switch" aria-checked={!!u.subscribed} aria-label={`Subscription for ${u.name}`} onClick={() => toggle(u)} /> : <span className="text-muted">—</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-    </div>
-  );
-}
-
 export function AdminOverview() {
   const [d] = useLoad(async () => ({
     users: await list(collection(db, 'users')), courses: await list(collection(db, 'courses')),
-    subs: (await getCountFromServer(collection(db, 'submissions'))).data().count, pays: await list(collection(db, 'payments')),
+    pays: await list(collection(db, 'payments')),
   }));
   if (!d) return <Loading />;
   const students = d.users.filter(u => u.role === 'student');
-  const revenue = d.pays.reduce((n, p) => n + (p.amount || 0), 0);
-  const recent = [...d.pays].sort((a, b) => b.at - a.at).slice(0, 5);
-  const stats = [
-    ['Students', students.length, `${students.filter(u => u.subscribed).length} subscribed`],
-    ['Trainers', d.users.filter(u => u.role === 'trainer').length, 'teaching'],
-    ['Courses', d.courses.length, `${d.courses.reduce((n, c) => n + c.students.length, 0)} enrollments`],
-    ['Revenue', '₹' + revenue.toLocaleString('en-IN'), `${plural(d.pays.length, 'payment')}, ${plural(d.subs, 'submission')}`],
-  ];
+  const kept = d.pays.filter(p => !p.refunded), revenue = kept.reduce((n, p) => n + (p.amount || 0), 0);
+  const recent = [...d.pays].sort((a, b) => ms(b.at) - ms(a.at)).slice(0, 5);
+  const subscribed = students.filter(u => u.subscribed).length;
+  const fresh = students.filter(u => u.createdAt).sort((a, b) => b.createdAt - a.createdAt);
+  const week = fresh.filter(u => u.createdAt > Date.now() - 7 * 864e5).length;
+  const enrolled = d.courses.reduce((n, c) => n + c.students.length, 0);
+  const top = [...d.courses].sort((a, b) => b.students.length - a.students.length).slice(0, 5);
+  const most = Math.max(1, ...top.map(c => c.students.length));
+  const subPct = students.length ? Math.round((100 * subscribed) / students.length) : 0;
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
-        {stats.map(([l, n, sub], i) => (
-          <div key={l} className={`${i === 0 ? 'bg-panel text-cream rounded-lg p-[22px]' : 'bg-surface border border-line rounded-lg p-[22px] max-phone:p-[18px] shadow-[0_1px_2px_rgba(23,24,28,.04),0_8px_24px_-16px_rgba(23,24,28,.12)] transition-[box-shadow,transform,border-color] duration-200'} flex flex-col [:where(&)_.big]:text-[42px] max-phone:[:where(&)_.big]:text-[32px] gap-2.5`}>
-            <div className="text-[13px] opacity-[0.75]">{l}</div><div className="big font-display font-extrabold tracking-[-.03em] leading-none">{n}</div><div className="text-[13px] opacity-[0.75]">{sub}</div>
-          </div>
-        ))}
+      <PageHero compact title="Overview" text={week ? `${plural(week, 'new student')} signed up in the last 7 days.` : 'Courses, people and payments at a glance.'}
+        stats={[['users', 'Students', students.length, `${subscribed} subscribed`], ['user', 'Trainers', d.users.filter(u => u.role === 'trainer').length, 'teaching'], ['book', 'Courses', d.courses.length, `${enrolled} enrollments`], ['chart', 'Revenue', rupees(revenue), plural(kept.length, 'payment')]]}
+        ring={{ pct: subPct, big: `${subPct}%`, small: 'of students subscribed' }}
+        actions={<><Link to="/users" className={heroBtn}><Icon name="users" size={18} />Manage users</Link><Link to="/courses" className={btn('ghost')}>Courses →</Link></>} />
+
+      <div className="grid gap-4 grid-cols-2 max-tablet:grid-cols-1">
+        <Trend title="Payments" items={kept.map(p => [ms(p.at), p.amount])} total={rupees} color="var(--accent)" />
+        <Trend title="Sign-ups" items={students.map(u => [ms(u.createdAt), 1])} total={n => plural(n, 'student')} color="var(--pass-strong)" />
       </div>
-      <Card as="section" className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-3"><H3 as="h2" className="text-[22px]">Recent payments</H3><Link to="/payments" className="text-[13px] font-semibold">See all</Link></div>
-        {recent.length === 0 ? <p className="text-muted text-[13px]">No payments recorded yet. Add an amount when you enroll a student.</p> : recent.map(p => (
-          <div key={p.id} className="flex items-center justify-between gap-3 p-[10px_0] [border-top:1px_solid_var(--line)]">
-            <span><b>{p.userName}</b> <span className="text-muted text-[13px]">enrolled in {p.courseTitle}</span></span><span className="font-mono">₹{p.amount.toLocaleString('en-IN')}</span>
-          </div>
-        ))}
-      </Card>
+
+      <div className="grid gap-4 grid-cols-3 max-laptop:grid-cols-1 items-start">
+        <Card as="section" className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3"><H3 as="h2" className="text-[20px]">Biggest courses</H3><Link to="/courses" className="text-[13px] font-semibold text-accent no-underline">All courses</Link></div>
+          {top.length === 0 ? <p className="text-muted text-[14px] m-0">No courses yet.</p> : top.map(c => (
+            <Link key={c.id} to={`/course/${c.id}`} className="flex flex-col gap-1.5 no-underline text-ink">
+              <span className="flex items-center justify-between gap-3"><b className="truncate">{c.title}</b><span className="text-[13px] text-muted shrink-0">{plural(c.students.length, 'student')}</span></span>
+              <Bar pct={(100 * c.students.length) / most} fill="bg-accent!" />
+              <span className="text-[12px] text-muted">Trainer: {c.trainerName}</span>
+            </Link>
+          ))}
+        </Card>
+        <Card as="section" className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3 mb-2"><H3 as="h2" className="text-[20px]">Recent payments</H3><Link to="/payments" className="text-[13px] font-semibold text-accent no-underline">See all</Link></div>
+          {recent.length === 0 ? <p className="text-muted text-[14px] m-0">No payments yet. They are recorded when you switch on Pro for a student.</p> : recent.map(p => (
+            <div key={p.id} className="flex items-center gap-3 py-2.5 border-t border-line">
+              <Avatar name={p.userName} size={32} />
+              <span className="grow min-w-0 flex flex-col"><b className="truncate text-[14px]">{p.userName}</b><span className="text-muted text-[12px] truncate">{what(p)}</span></span>
+              <span className={`font-mono text-[14px] ${p.refunded ? 'line-through text-muted' : ''}`} title={p.refunded ? 'Refunded' : undefined}>{rupees(p.amount)}</span>
+            </div>
+          ))}
+        </Card>
+        <Card as="section" className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3 mb-2"><H3 as="h2" className="text-[20px]">New sign-ups</H3><Link to="/users" className="text-[13px] font-semibold text-accent no-underline">All users</Link></div>
+          {fresh.length === 0 ? <p className="text-muted text-[14px] m-0">Students who sign up on the website show up here. Enroll them in a course from its page.</p> : fresh.slice(0, 5).map(u => (
+            <div key={u.id} className="flex items-center gap-3 py-2.5 border-t border-line">
+              <Avatar name={u.name} size={32} />
+              <span className="grow min-w-0 flex flex-col"><b className="truncate text-[14px]">{u.name}</b><span className="text-muted text-[12px] truncate">{u.email}</span></span>
+              <span className="text-[12px] text-muted shrink-0">{new Date(u.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
     </div>
   );
 }
 
-export function AdminPayments() {
-  const [pays] = useLoad(() => list(collection(db, 'payments')));
-  if (!pays) return <Loading />;
-  const rows = [...pays].sort((a, b) => b.at - a.at);
+const RANGES = [['today', 'Today', 'today'], ['week', '7 days', 'in the last 7 days'], ['month', 'Month', 'in the last 30 days'], ['year', 'Year', 'in the last 12 months'], ['all', 'All', 'in total']];
+// A line graph with its own time range buttons. total: how to say the sum, e.g. rupees
+function Trend({ title, items, total, color }) {
+  const [range, setRange] = useState('month');
+  const data = series(items, range), r = RANGES.find(x => x[0] === range);
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-muted m-0">Payments are recorded when you enroll a student on a course page. Total: <b>₹{rows.reduce((n, p) => n + p.amount, 0).toLocaleString('en-IN')}</b></p>
-      {rows.length === 0 ? <Empty title="No payments yet" /> : (
-        <Card className="overflow-x-auto p-1.5">
-          <table className="border-collapse w-full">
-            <thead><tr><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Date</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Student</th><th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line">Course</th><th className="text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line text-right">Amount</th></tr></thead>
-            <tbody>{rows.map(p => (
-              <tr key={p.id}><td className="p-3 border-b border-line text-[15px] text-muted">{new Date(p.at).toLocaleDateString('en-IN')}</td><td className="p-3 border-b border-line text-[15px]"><b>{p.userName}</b></td><td className="p-3 border-b border-line text-[15px]">{p.courseTitle}</td><td className="p-3 border-b border-line text-[15px] font-mono text-right">₹{p.amount.toLocaleString('en-IN')}</td></tr>
-            ))}</tbody>
-          </table>
-        </Card>
-      )}
-    </div>
+    <Card as="section" className="flex flex-col gap-3">
+      <div><H3 as="h2" className="text-[18px]">{title}</H3><p className="text-[13px] text-muted m-[2px_0_0]">{total(data.reduce((a, p) => a + p.value, 0))} {r[2]}</p></div>
+      <div className="flex gap-1 p-1 rounded-lg bg-soft border border-line w-full max-w-[420px]" role="group" aria-label={`${title}: time range`}>
+        {RANGES.map(([k, l]) => (
+          <button key={k} type="button" aria-pressed={range === k} onClick={() => setRange(k)} className="grow min-h-8 pointer-coarse:min-h-11 px-1.5 rounded-md border-0 bg-transparent text-[12px] font-medium text-muted whitespace-nowrap hover:text-ink aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:font-semibold aria-pressed:shadow-[0_1px_2px_rgba(23,24,28,.1)]">{l}</button>
+        ))}
+      </div>
+      <LineChart data={data} label={`${title} ${r[2]}`} color={color} />
+    </Card>
   );
 }
+

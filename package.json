@@ -6,7 +6,7 @@
     "dev": "vite",
     "demo": "vite --mode demo",
     "build": "npm run lint && vite build",
-    "test": "node --test src/score.test.js src/precheck.test.js",
+    "test": "node --test src/score.test.js src/precheck.test.js src/schedule.test.js src/csv.test.js",
     "lint": "eslint src public"
   },
   "dependencies": {

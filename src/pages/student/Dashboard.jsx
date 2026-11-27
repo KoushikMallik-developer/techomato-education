@@ -3,11 +3,12 @@ import { inCourse } from '../../score.js';
 import { collection, doc, getCountFromServer, getDoc, query, where } from 'firebase/firestore';
 import { db, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
-import { notOpen, windowOf } from '../../schedule.js';
-import { activityByDay, dailyOf, dayKey } from '../../score.js';
-import { Bar, StreakDots, Empty, Icon, Loading, useLoad, Card, btn, Chip, H3 } from '../../ui.jsx';
-import { solvedIds } from './Practice.jsx';
-import { get, isPublic, mySubs, myCourses } from './data.js';
+import { notOpen, timeUp, windowOf } from '../../schedule.js';
+import { SOLVE_POINTS, activityByDay, dailyOf, dayKey } from '../../score.js';
+import { Bar, Empty, Icon, Loading, useLoad, Card, btn, Chip, H3, Hero, HeroTitle, Ring, heroBtn, plural } from '../../ui.jsx';
+import { PointsPromo, solvedIds } from './Practice.jsx';
+import { payRewards } from './rewards.js';
+import { get, isPublic, myAttempts, mySubs, myCourses } from './data.js';
 
 /* ---------- activity graph (like GitHub's contribution graph) ---------- */
 const WEEKS = 53;
@@ -39,63 +40,70 @@ function ActivityGraph({ subs }) {
 export function Dashboard() {
   const me = useMe();
   const [d] = useLoad(async () => {
+    await payRewards(me).catch(() => {}); // first, so the points below include them
     const courses = await myCourses(me.uid);
     const tests = (await Promise.all([...new Set(courses.flatMap(c => c.testIds))].map(t => get('tests', t)))).filter(t => t && !t.draft);
-    const mine = (await getDoc(doc(db, 'leaderboard', me.uid))).data() || { xp: 0, streak: 0, lastDay: '' };
+    const mine = (await getDoc(doc(db, 'leaderboard', me.uid))).data() || { points: 0, streak: 0, lastDay: '' };
     const count = async w => (await getCountFromServer(w ? query(collection(db, 'leaderboard'), w) : collection(db, 'leaderboard'))).data().count; // count queries read ~1 doc per 1000, not one per student
-    const rank = (await count(where('xp', '>', mine.xp))) + 1;
-    return { rank, of: Math.max(rank, await count()), courses, tests, subs: await mySubs(me.uid), mine, daily: dailyOf((await questions()).filter(isPublic)) };
+    const rank = (await count(where('points', '>', mine.points || 0))) + 1;
+    return { rank, of: Math.max(rank, await count()), courses, tests, subs: await mySubs(me.uid), atts: await myAttempts(me.uid), mine, daily: dailyOf((await questions()).filter(isPublic)) };
   });
   if (!d) return <Loading />;
   const today = dayKey(new Date());
   const mine = d.mine, { rank, of } = d;
+  const days = activityByDay(d.subs);
+  const week = Array.from({ length: 7 }, (_, i) => days[dayKey(new Date(Date.now() - i * 864e5))] ? 1 : 0).reduce((a, b) => a + b, 0); // active days in the last 7
   const cards = d.courses.flatMap(c => c.testIds.map(t => ({ c, t: d.tests.find(x => x.id === t) }))).filter(x => x.t);
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
-        <div className="bg-panel text-cream rounded-lg p-[22px] flex flex-col [:where(&)_.big]:text-[42px] max-phone:[:where(&)_.big]:text-[32px] gap-3">
-          <div className="flex items-center justify-between gap-3 text-[13px] text-on-dark-2">
-            <span className="flex items-center gap-1.5"><Icon name="flame" size={16} color="#F2B8A8" />Streak</span>
-            <span className="text-rose">{mine.lastDay === today ? 'Done today' : 'Due today'}</span>
+      <Hero>
+        <div className="grid gap-8 grid-cols-[1fr_auto] max-tablet:grid-cols-1 items-center">
+          <div className="flex flex-col gap-5 min-w-0">
+            <div className="flex flex-col gap-1">
+              <HeroTitle>{mine.points ? `Rank #${rank}` : "Let's get started."}</HeroTitle>
+              <span className="text-muted text-[15px]">{mine.points ? `of ${plural(of, 'student')} on the leaderboard` : 'Solve your first problem to join the leaderboard.'}</span>
+            </div>
+            <div className="grid grid-cols-4 max-phone:grid-cols-2 gap-3">
+              {[['flame', 'Streak', `${mine.streak || 0}`, mine.lastDay === today ? 'done today' : 'due today'],
+                ['star', 'Points', `${mine.points || 0}`, `+${SOLVE_POINTS} per solve`],
+                ['check', 'Solved', `${solvedIds(d.subs).size}`, 'problems'],
+                ['book', 'Courses', `${d.courses.length}`, `${d.courses.filter(c => c.completed).length} completed`]].map(([icon, label, big]) => (
+                <div key={label} className="rounded-lg bg-soft border border-line p-4 max-phone:p-3 flex flex-col gap-1">
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted"><Icon name={icon} size={14} />{label}</span>
+                  <b className="font-display text-[30px] max-phone:text-[24px] leading-none">{big}</b>
+                </div>
+              ))}
+            </div>
+            {d.daily && (
+              <div className="flex flex-wrap gap-x-4 gap-y-3 items-center">
+                <Link to="/contest" className={heroBtn}>Today's challenge: {d.daily.title}<span className="transition-transform duration-200 group-hover/go:translate-x-1"><Icon name="arrow" size={18} stroke={2.4} /></span></Link>
+                <Link to="/problems" className="text-ink-2 hover:text-accent-ink text-[14px] font-semibold no-underline">Browse problems →</Link>
+              </div>
+            )}
           </div>
-          <div className="big font-display font-extrabold tracking-[-.03em] leading-none">{mine.streak} {mine.streak === 1 ? 'day' : 'days'}</div>
-          <StreakDots n={mine.streak} dark />
+          <div className="justify-self-center">
+            <Ring pct={(100 * week) / 7}>
+              <b className="text-[36px] leading-none font-display">{week}/7</b>
+              <span className="text-muted text-[12px] mt-1.5 max-w-24">days active this week</span>
+            </Ring>
+          </div>
         </div>
-        <Card className="flex flex-col [:where(&)_.big]:text-[42px] max-phone:[:where(&)_.big]:text-[32px] gap-3">
-          <div className="text-[13px] text-muted">Courses enrolled</div>
-          <div className="big font-display font-extrabold tracking-[-.03em] leading-none">{d.courses.length}</div>
-          <div className="text-[13px] text-ink-2">{d.courses.filter(c => c.completed).length} completed</div>
-        </Card>
-        <Card className="flex flex-col [:where(&)_.big]:text-[42px] max-phone:[:where(&)_.big]:text-[32px] gap-3">
-          <div className="text-[13px] text-muted">Problems solved</div>
-          <div className="big font-display font-extrabold tracking-[-.03em] leading-none">{solvedIds(d.subs).size}</div>
-          <div className="text-[13px] text-ink-2">all test cases passed</div>
-        </Card>
-        <Card className="flex flex-col [:where(&)_.big]:text-[42px] max-phone:[:where(&)_.big]:text-[32px] gap-3">
-          <div className="text-[13px] text-muted">Leaderboard</div>
-          <div className="big font-display font-extrabold tracking-[-.03em] leading-none">#{rank}</div>
-          <div className="text-[13px] text-ink-2">of {of}, {mine.xp} XP</div>
-        </Card>
-      </div>
+      </Hero>
       <ActivityGraph subs={d.subs} />
-      {d.daily && (
-        <Link to="/contest" className="border border-line rounded-lg p-[22px] max-phone:p-[18px] shadow-[0_1px_2px_rgba(23,24,28,.04),0_8px_24px_-16px_rgba(23,24,28,.12)] transition-[box-shadow,transform,border-color] duration-200 flex items-center justify-between hover:-translate-y-0.5 hover:border-field-line hover:shadow-[0_2px_4px_rgba(23,24,28,.05),0_16px_32px_-16px_rgba(23,24,28,.22)] bg-accent text-on-accent [border:0px] no-underline flex-wrap gap-3">
-          <span className="flex flex-col gap-0.5"><span className="text-[13px]">Daily contest</span><b className="text-[20px]">{d.daily.title}</b></span>
-          <span className={btn('white')}>Solve today's question</span>
-        </Link>
-      )}
+      <PointsPromo to="/problems" label="Browse problems" />
       <H3 as="h2" className="text-[22px]">Your tests</H3>
       {cards.length === 0 ? <Empty title="No tests yet" body="Tests your trainer assigns to your courses show up here." /> : (
         <div className="grid gap-4 grid-cols-3 max-tablet:grid-cols-1">
           {cards.map(({ c, t }) => {
-            const done = d.subs.filter(s => s.testId === t.id && inCourse(s, c.id)).length;
+            const done = d.subs.filter(s => s.testId === t.id && inCourse(s, c.id)).length, n = t.questionIds.length;
+            const att = d.atts.find(a => a.id === `${me.uid}_${c.id}_${t.id}`), all = n > 0 && done >= n, over = !all && timeUp(t, att, done), started = done > 0 || !!att;
             return (
               <Card as="article" key={c.id + t.id} className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-3"><span className="text-[13px] text-muted">{c.title}</span><Chip as="span" className={`${done === t.questionIds.length ? 'bg-pass-soft! text-pass!' : 'bg-accent-soft! text-accent-ink!'}`}>{done === t.questionIds.length ? 'Attempted' : notOpen(t) ? (windowOf(t) === 'soon' ? 'Opens soon' : 'Closed') : 'Open'}</Chip></div>
+                <div className="flex items-center justify-between gap-3"><span className="text-[13px] text-muted">{c.title}</span><Chip as="span" className={`${all || over ? 'bg-pass-soft! text-pass!' : 'bg-accent-soft! text-accent-ink!'}`}>{all || over ? 'Submitted' : notOpen(t) ? (windowOf(t) === 'soon' ? 'Opens soon' : 'Closed') : 'Open'}</Chip></div>
                 <H3 as="h2" className="text-[23px]">{t.title}</H3>
-                <div className="text-[13px] text-muted">{done}/{t.questionIds.length} questions attempted</div>
-                <Bar pct={t.questionIds.length ? (100 * done) / t.questionIds.length : 0} />
-                <Link to={`/test/${c.id}/${t.id}`} state={{ to: '/', label: 'Dashboard' }} className={btn(done && done === t.questionIds.length || (!done && notOpen(t)) ? 'ghost' : 'accent', 'md', 'self-start mt-1')}>{t.questionIds.length && done === t.questionIds.length ? 'View result' : done ? 'Continue' : notOpen(t) ? 'Details' : 'Start test'}</Link>
+                <div className="text-[13px] text-muted">{done}/{n} questions attempted</div>
+                <Bar pct={n ? (100 * done) / n : 0} />
+                <Link to={`/test/${c.id}/${t.id}`} state={{ to: '/', label: 'Dashboard' }} className={btn(all || over || (!started && notOpen(t)) ? 'ghost' : 'accent', 'md', 'self-start mt-1')}>{all || over ? 'View result' : started ? 'Continue' : notOpen(t) ? 'Details' : 'Start test'}</Link>
               </Card>
             );
           })}

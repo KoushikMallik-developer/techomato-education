@@ -13,7 +13,8 @@ export const signInWithEmailAndPassword = async (_, email, pw) => {
   setUid(id);
 };
 export const signOut = async a => { if (!a.tmp) setUid(null); };
-export const createUserWithEmailAndPassword = async (_, email, pw) => {
+export const createUserWithEmailAndPassword = async (a, email, pw) => {
+  if (!a.tmp) return noSignup(); // only the admin's "create user" works in the demo
   const uid = Math.random().toString(36).slice(2, 10);
   (db0.passwords ||= {})[email] = pw;
   commit();
@@ -21,3 +22,8 @@ export const createUserWithEmailAndPassword = async (_, email, pw) => {
 };
 export const updatePassword = async (_, pw) => { const u = db0.users[session.uid]; (db0.passwords ||= {})[u.email] = pw; commit(); };
 export const sendPasswordResetEmail = async () => {};
+const noSignup = async () => { throw new Error('Sign-up is not available in the demo. Use a demo account below.'); };
+export class GoogleAuthProvider { setCustomParameters() {} }
+export const signInWithPopup = noSignup;
+export const sendEmailVerification = async () => {};
+export const updateProfile = async () => {};

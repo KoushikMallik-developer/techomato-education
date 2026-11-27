@@ -4,10 +4,10 @@ React + Vite + Tailwind + Firebase (Auth, Firestore).
 
 - **Admin**: creates courses/users, enrolls students after payment, marks students as subscribed.
 - **Trainer**: writes questions (Python, JavaScript, C/C++ (basic) or HTML/CSS/JS) into the Question Bank, builds tests from it, assigns tests to their courses, reads results per student.
-- **Admin** also gets an overview and a payments ledger (record the amount when enrolling). **Trainers** can open any student's submitted code from the results table and delete questions/tests.
+- **Admin** also gets an overview and a payments ledger (courses are free; the amount is recorded when an admin switches on Pro for a student). **Trainers** can open any student's submitted code from the results table and delete questions/tests.
 - **Student**: solves questions in an editor, "Run sample tests" and "Submit" show test cases passed. Each test is one attempt for everyone: a question can be submitted once, and a test whose questions are all submitted cannot be opened again. In practice, free students get one submission per question and subscribers can resubmit.
 
-- **Student extras**: XP (10 per passed test case), daily streak, leaderboard, playground (run code with your own input), profile.
+- **Student extras**: points (50 for each problem fully solved in Practice, once per problem; tests earn none), daily streak, leaderboard, playground (run code with your own input), profile.
 - **Proctored tests**: tick "Proctored" when a trainer creates a test. Before starting, a setup check shows a live camera preview and a checklist: the camera works, the lighting is good (not too dark, too bright or backlit), exactly one face is visible, centered and facing the screen, the microphone works, and only one screen is connected. "Start exam" stays disabled until every line passes (thresholds are in `src/precheck.js`). The exam then shows no menu, and the student can leave only after submitting every question ("Finish exam"). If no face is detected, or the camera is covered or stops, a 10 second countdown starts and the exam is auto-submitted when it ends (it cancels if the face comes back). The open question is graded and saved, unanswered questions get an empty 0-score submission, and the exam cannot be restarted. More than one face, or looking away, shows an instant warning. Leaving fullscreen, a second screen or a muted microphone pauses the exam. Everything is logged (`proctor` collection: tab switches, paste/copy/cut, right-click, refused starts, warnings, countdowns, auto-submit, finish), and a photo is saved every 2 minutes and at each violation (`snaps`, in Firestore because Storage needs a paid plan; ids are capped per student by the rules). Trainers see a flags chip per student on the course page, a Results page with a per-test summary, and the full timeline with photos. Questions used in a proctored test are hidden from practice, the daily contest and search (within 5 minutes of the test being created). Redeploy `firestore.rules` after pulling this: the exam refuses to start if it cannot save its records.
 - **Public pages**: landing, pricing, for institutes, help, privacy, terms.
 
@@ -16,7 +16,7 @@ React + Vite + Tailwind + Firebase (Auth, Firestore).
 
 ## Setup
 
-1. Create a Firebase project; enable **Authentication → Email/Password** and **Firestore**.
+1. Create a Firebase project; enable **Authentication → Email/Password** and **Google** (add your site's domain under Authentication → Settings → Authorized domains) and **Firestore**. Anyone can sign up as a student; email sign-ups must open the verification link before their profile is created.
 2. `cp .env.example .env` and fill in the web app config.
 3. Deploy `firestore.rules` (Firebase console → Firestore → Rules, or `firebase deploy --only firestore:rules`). Then, if you use proctored tests, open Firestore > Rules > Rules Playground and check, as a student signed in, a create on `proctor/<uid>_<proctoredTestId>_5` (allowed), `..._3000` (denied), the same id for a test that is not proctored (denied) and another student's uid (denied).
 4. Create the first admin by hand: add a user in Authentication, then in Firestore create `users/<that uid>` with `{ name, email, role: "admin", subscribed: false }`.
@@ -44,7 +44,7 @@ src/
     public/              landing, login, pricing, help, legal
     staff/               admin and trainer pages, course detail (results, enroll, assign)
     student/             dashboard, courses, solve, problems, contest, leaderboard, ...
-    Account.jsx          notifications, settings, search, forgot password (all roles)
+    Account.jsx          settings, search, forgot password (all roles)
 firestore.rules, firebase.json   security rules and their deploy config
 ```
 
@@ -61,7 +61,7 @@ New page: add the file under the role's folder, then add its route in App.jsx an
 - Grading runs in the browser (Pyodide for Python, sandboxed iframe for web), so a determined student can tamper with their score. Hidden test cases are readable by students via the Firestore API for the same reason, and so are a proctored test's questions before it starts. Only questions marked Private stay out of Practice, and a proctored test's questions are in Practice like any other public question, so mark exam questions Private (the question bank is readable by every signed-in user). Proctoring deters casual cheating; it is not a secure exam.
 - Proctoring is strong deterrence plus evidence, not a lock: a browser cannot stop a second device, a helper off camera, a virtual camera or devtools. The face check (MediaPipe) loads from a CDN, so the exam needs internet, and it can misjudge poor light or glasses. Second-screen detection works in Chrome and Edge only. Photos count against the free Firestore quota (about 10 KB each, one per minute per student). Anything high-stakes needs Safe Exam Browser or server-side grading.
 - Java (and full C++/STL) is not supported: browsers can only run languages compiled to WebAssembly or interpreted in JS. C/C++ uses the JSCPP interpreter (core language only). Java needs a server runner such as Judge0.
-- Students can take up to 5 minutes to see a newly added question (it is cached in the browser). The leaderboard shows the top 50 only. XP is written by the student's browser, so it can be faked.
+- Students can take up to 5 minutes to see a newly added question (it is cached in the browser). The leaderboard shows the top 50 only. Points are written by the student's browser, so it can be faked.
 - A trainer's pages (Results, Tests, course results, question averages) show only the tests he wrote and his own courses. This is enforced in the app, not in `firestore.rules`: every trainer can still read all submissions through the Firestore API. Restricting that needs the course or test author stored on each submission.
 - Any signed-in user can read every course (title, trainer and the ids of enrolled students) so students can browse "All courses". Test results stay private. Redeploy `firestore.rules` after pulling.
 - Admin-created passwords are shown in plain text in the form and must be shared with the user manually.

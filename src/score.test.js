@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dailyOf, dayIndex, nextStreak, scoreTable, perWeek, joinSeries, histogram, questionStats, perDay, inCourse, activityByDay, dayKey, byRank } from './score.js';
+import { buckets, testReward, rewardsDue, series, averageScore, dailyOf, dayIndex, nextStreak, scoreTable, perWeek, joinSeries, histogram, questionStats, perDay, inCourse, activityByDay, dayKey, byRank, pointsFor } from './score.js';
 
 test('sums passed cases; unattempted tests are null; unsubmitted questions still count in total', () => {
   const rows = scoreTable(
@@ -67,7 +67,7 @@ test('perDay counts submissions per calendar day, oldest first', () => {
   assert.deepEqual(perDay([now, now - 1000, now - day, now - 30 * day, undefined], 3, now), [0, 1, 2]);
 });
 
-import { windowOf, shouldTell, statusOf, leftMs, clock, readiness, newCode, testCode, courseCode, langsOf, langOfSub, typeLabel } from './schedule.js';
+import { windowOf, statusOf, leftMs, clock, readiness, newCode, testCode, courseCode, langsOf, langOfSub, typeLabel } from './schedule.js';
 test('windowOf: soon before publish, closed after end, open between', () => {
   const t = { publishAt: 100, endAt: 200 };
   assert.deepEqual([windowOf(t, 50), windowOf(t, 150), windowOf(t, 201), windowOf({}, 5)], ['soon', 'open', 'closed', 'open']);
@@ -124,14 +124,6 @@ test('a test is a draft until it is complete and in a course', () => {
   assert.equal(statusOf({ ...t, draft: true }, new Set(['q']), 1), 'draft');
 });
 
-test('students are told about a test only when it is published, never for a draft', () => {
-  assert.equal(shouldTell('none', true, false), false);
-  assert.equal(shouldTell('new', true, false), true);
-  assert.equal(shouldTell('new', true, true), false);
-  assert.equal(shouldTell('all', true, true), true);
-  assert.equal(shouldTell('all', false, true), false); // a course the test was removed from
-});
-
 test('activityByDay counts answers per local day, for numbers and Timestamps, and skips ones without a time', () => {
   const t = new Date(2026, 10, 22, 15).getTime();
   const m = activityByDay([{ at: t }, { at: { toMillis: () => t + 1000 } }, { at: t - 864e5 }, {}]);
@@ -141,4 +133,62 @@ test('activityByDay counts answers per local day, for numbers and Timestamps, an
 test('byRank: higher score first, then fewer flags, then the earlier finish', () => {
   const rows = [{ n: 'late', pct: 90, flags: 0, at: 9 }, { n: 'flagged', pct: 90, flags: 2, at: 1 }, { n: 'top', pct: 100, flags: 5, at: 5 }, { n: 'early', pct: 90, flags: 0, at: 2 }];
   assert.deepEqual(rows.sort(byRank).map(r => r.n), ['top', 'early', 'late', 'flagged']);
+});
+
+test('50 points for the first full solve in practice only', () => {
+  assert.equal(pointsFor('practice', 3, 3, false), 50);
+  assert.equal(pointsFor('practice', 3, 3, true), 0); // solved before
+  assert.equal(pointsFor('practice', 2, 3, false), 0); // not every case passed
+  assert.equal(pointsFor('t1', 3, 3, false), 0); // a test, not Problems
+});
+
+test('averageScore: every student counts once, unanswered questions count as 0', () => {
+  const tests = [{ id: 't', questionIds: ['a', 'b'] }], cases = { a: 2, b: 2 };
+  // s1 answers both questions (4/4 = 100%), s2 answers one and passes half of it (1/4 = 25%): the class average is 63, not the pooled 5/6
+  const subs = [{ userId: 's1', testId: 't', questionId: 'a', passed: 2 }, { userId: 's1', testId: 't', questionId: 'b', passed: 2 }, { userId: 's2', testId: 't', questionId: 'a', passed: 1 }];
+  assert.equal(averageScore(subs, tests, cases), 63);
+  assert.equal(averageScore([], tests, cases), null);
+});
+
+test('series buckets amounts by hour, day and month, and skips undated or out-of-range ones', () => {
+  const now = new Date(2026, 10, 25, 15, 30).getTime(), h = 36e5, day = 864e5;
+  const items = [[now, 499], [now - h, 1], [now - 3 * day, 200], [now - 40 * day, 7], [now - 800 * day, 9], [undefined, 5]];
+  const sum = r => series(items, r, now).reduce((a, p) => a + p.value, 0);
+  assert.equal(series(items, 'today', now).length, 16); // midnight to 3 pm
+  assert.deepEqual(series(items, 'today', now).slice(-2).map(p => p.value), [1, 499]);
+  assert.deepEqual([sum('today'), sum('week'), sum('month'), sum('year'), sum('all')], [500, 700, 700, 707, 716]);
+  assert.equal(series(items, 'week', now).length, 7);
+  assert.equal(series(items, 'year', now).length, 12);
+  assert.equal(series([], 'all', now).length, 1);
+});
+
+test('testReward: 60 to under 75 = 25, 75 to under 100 = 100, 100 = 200', () => {
+  assert.deepEqual([0, 59.9, 60, 74.9, 75, 99.9, 100].map(testReward), [0, 0, 25, 25, 100, 100, 200]);
+});
+
+test('rewardsDue pays only finished tests, counts unanswered questions as 0, and completed courses', () => {
+  const now = 1e12, cases = { a: 2, b: 2 };
+  const tests = [{ id: 't1', title: 'T1', questionIds: ['a', 'b'] }, { id: 't2', title: 'T2', questionIds: ['a', 'b'] }, { id: 't3', title: 'T3', questionIds: ['a', 'b'] }];
+  const courses = [{ id: 'c', title: 'C', testIds: ['t1', 't2', 't3'], completed: true }];
+  const subs = [
+    { testId: 't1', courseId: 'c', questionId: 'a', passed: 2 }, { testId: 't1', courseId: 'c', questionId: 'b', passed: 2 }, // all submitted, 100%
+    { testId: 't2', courseId: 'c', questionId: 'a', passed: 2 }, // one of two answered, timer ran out: 2/4 = 50%, no reward
+    { testId: 't3', courseId: 'c', questionId: 'a', passed: 2 }, // one answered, still running: not over yet
+  ];
+  const attempts = [{ courseId: 'c', testId: 't2', deadline: now - 1 }, { courseId: 'c', testId: 't3', deadline: now + 1 }];
+  assert.deepEqual(rewardsDue({ courses, tests, subs, attempts, cases, now }).map(([k, p]) => [k, p]), [['test_c_t1', 200], ['course_c', 500]]);
+  subs.push({ testId: 't2', courseId: 'c', questionId: 'b', passed: 1 }); // now 3/4 = 75%
+  assert.deepEqual(rewardsDue({ courses, tests, subs, attempts, cases, now }).find(r => r[0] === 'test_c_t2')[1], 100);
+});
+
+test('custom ranges: per day up to 62 days, else per month cut to the chosen days', () => {
+  const from = new Date(2026, 0, 10, 15).getTime(), to = new Date(2026, 0, 12, 9).getTime();
+  const b = buckets('custom', 0, 0, from, to);
+  assert.equal(b.unit, 'day');
+  assert.deepEqual([b.starts.length, b.starts[0], b.starts[3]], [4, +new Date(2026, 0, 10), +new Date(2026, 0, 13)]);
+  const items = [[new Date(2026, 0, 10, 1).getTime(), 5], [new Date(2026, 0, 12, 23).getTime(), 7], [new Date(2026, 0, 13, 0, 1).getTime(), 9]];
+  assert.deepEqual(series(items, 'custom', 0, from, to).map(p => p.value), [5, 0, 7]);
+  const long = buckets('custom', 0, 0, new Date(2026, 0, 20).getTime(), new Date(2026, 4, 5).getTime());
+  assert.equal(long.unit, 'month');
+  assert.deepEqual([long.starts.length, long.starts[0], long.starts[1], long.starts[5]], [6, +new Date(2026, 0, 20), +new Date(2026, 1, 1), +new Date(2026, 4, 6)]);
 });

@@ -5,9 +5,9 @@ import { collection, doc, getDoc, query, where } from 'firebase/firestore';
 import { db, list, questions } from '../../firebase.js';
 import { useMe } from '../../auth.jsx';
 import { flagMap } from '../../proctor.js';
-import { histogram, perDay, questionStats, scoreTable } from '../../score.js';
+import { averageScore, histogram, perDay, questionStats, scoreTable } from '../../score.js';
 import { BarChart, ChartCard } from '../../Charts.jsx';
-import { Avatar, Empty, Icon, Loading, plural, useLoad, btn, Card, Chip, Bar, H2, H3, Back } from '../../ui.jsx';
+import { Avatar, Empty, Loading, plural, useLoad, btn, Card, Chip, Bar, H3, Back, PageHero } from '../../ui.jsx';
 import { ResultModal } from './CourseDetail.jsx';
 
 const ms = t => t?.toMillis?.() ?? t; // Firestore timestamp or plain number
@@ -60,7 +60,7 @@ export default function TestResults() {
   });
 
   const attempted = rows.filter(r => r.tried > 0), pcts = attempted.map(r => r.pct ?? 0);
-  const avg = pcts.length ? Math.round(pcts.reduce((n, x) => n + x, 0) / pcts.length) : null;
+  const avg = averageScore(subs, [test], caseCount);
   const stats = questionStats(qs, [test], subs);
   const spread = histogram(pcts);
   const daily = perDay(subs.map(s => ms(s.at)), 14, now);
@@ -91,23 +91,10 @@ export default function TestResults() {
   return (
     <div className="flex flex-col gap-5">
       <Back to="/results">All results</Back>
-      <Card className="flex flex-col gap-2.5">
-        <div className="flex items-center flex-wrap gap-2">
-          <Chip as="span">{course.title}</Chip>
-          {test.proctored && <Chip tone="proctor"><Icon name="lock" size={14} />Proctored</Chip>}
-          <Chip as="span">{plural(qs.length, 'question')}</Chip>
-        </div>
-        <H2 className="text-[36px]">{test.title}</H2>
-        <div className="grid gap-4 grid-cols-4 max-laptop:grid-cols-2">
-          {[
-            [`${attempted.length}/${students.length}`, 'Students attempted'],
-            [rows.filter(r => r.status === 'done').length, 'Finished every question'],
-            [avg === null ? '—' : `${avg}%`, 'Average score'],
-            [pcts.length ? `${Math.max(...pcts)}% / ${Math.min(...pcts)}%` : '—', 'Highest / lowest'],
-          ].map(([n, l]) => <div className="bg-paper rounded-[14px] p-[12px_16px]" key={l}><div className="big font-display font-extrabold tracking-[-.03em] leading-none text-[26px]">{n}</div><div className="text-[13px] text-muted">{l}</div></div>)}
-        </div>
-        {test.proctored && <p className="text-[13px] text-muted m-0">{flagged ? `${plural(flagged, 'student')} flagged by proctoring.` : 'No student was flagged by proctoring.'}</p>}
-      </Card>
+      <PageHero compact pill={`${course.title}${test.proctored ? ' · Proctored' : ''}`} title={test.title}
+        text={test.proctored ? (flagged ? `${plural(flagged, 'student')} flagged by proctoring.` : 'No student was flagged by proctoring.') : `${plural(qs.length, 'question')} in this test.`}
+        stats={[['users', 'Attempted', `${attempted.length}/${students.length}`, 'students'], ['check', 'Finished', rows.filter(r => r.status === 'done').length, 'every question'], ['trophy', 'Highest', pcts.length ? `${Math.max(...pcts)}%` : '-'], ['chart', 'Lowest', pcts.length ? `${Math.min(...pcts)}%` : '-']]}
+        ring={{ pct: avg ?? 0, big: avg === null ? '-' : `${avg}%`, small: 'average student score' }} />
 
       <div className="grid gap-4 grid-cols-2 max-phone:grid-cols-1">
         <ChartCard title="Score spread" hint={pcts.length ? 'Students by their score on this test.' : 'Nobody has attempted this test yet.'}>
@@ -117,7 +104,7 @@ export default function TestResults() {
           <BarChart data={daily.map((value, i) => ({ label: dayLabels[i], value }))} label="Submissions per day" color="var(--accent)" />
         </ChartCard>
         <ChartCard title="Average score per question" hint="Each student's best attempt counts. Shows which questions were hardest.">
-          <BarChart data={qs.map((q, i) => ({ label: `Q${i + 1}`, value: stats[q.id].avg ?? 0 }))} max={100} label="Average score per question" color="var(--warn)" />
+          <BarChart data={qs.map((q, i) => ({ label: qs.length <= 6 ? (q.title.length > 11 ? `${q.title.slice(0, 10)}…` : q.title) : `Q${i + 1}`, value: stats[q.id].avg ?? 0 }))} max={100} label="Average score per question" color="var(--warn)" />
           <ul className="text-[13px] m-0 pl-4.5 grid gap-0.5">
             {qs.map((q, i) => <li key={q.id}><b>Q{i + 1}</b> {q.title}: {stats[q.id].avg === null ? 'no attempts' : `${stats[q.id].avg}% from ${plural(stats[q.id].students, 'student')}`}</li>)}
           </ul>
@@ -142,7 +129,7 @@ export default function TestResults() {
           <H3 className="text-[20px]">Student by student</H3>
           <span className="text-[13px] text-muted">Showing {shown.length} of {students.length}{filtering && <> · <button type="button" className="border-0 bg-transparent p-0 font-semibold underline text-ink cursor-pointer" onClick={() => setF({ name: '', status: 'all', score: 'all', last: 'all', flags: 'all' })}>Clear filters</button></>}</span>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
           <table className="border-collapse w-full">
             <thead>
               <tr><Th k="name">Student</Th><Th k="status">Progress</Th><Th k="score">Score</Th><Th k="last">Last submission</Th>{test.proctored && <Th k="flags">Flags</Th>}<th className="text-left text-[13px] font-semibold text-muted py-2.5 px-3 border-b border-line"><span className="sr-only">Open</span></th></tr>
@@ -170,7 +157,7 @@ export default function TestResults() {
           </table>
         </div>
       </Card>
-      {view && <ResultModal courseId={courseId} student={view.student} test={view.test} qs={bank} subs={subs} onClose={() => setView(null)} />}
+      {view && <ResultModal courseId={courseId} student={view.student} test={view.test} qs={bank} subs={subs} onClose={() => setView(null)} others={shown.map(r => r.student)} onMove={st => setView({ ...view, student: st })} />}
     </div>
   );
 }
